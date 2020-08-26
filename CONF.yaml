@@ -1,0 +1,51 @@
+DESIGN_TWO_BIT_TO_FA_PATH: faToTwoBit
+DESIGN_BOWTIE_PATH: bowtie
+DESIGN_PRIMER3_PATH: primer3-core
+DESIGN_PRIMER3_CONFIG_PATH:
+DESIGN_ASSEMBLIES_FOLDER: assemblies
+DESIGN_BOWTIE_GENOMES_FOLDER: bowtie_genomes
+DESIGN_CODON_USAGE_FOLDER: codon_usage
+DESIGN_OUTPUT_FOLDER: output
+DESIGN_ENTREZ_EMAIL: ''
+DESIGN_CLINVAR_ORGANISM: GCF_000001405.38_GRCh38.p12_genomic
+
+DATABASES:
+   default:
+       #ENGINE: 'django.db.backends.postgresql'
+       #NAME: DATABASE_NAME
+       #USER: DATABASE_USER
+       #PASSWORD: DATABASE_PASSWORD
+       #HOST: DATABASE_HOST
+       #PORT: DATABASE_PORT
+       ENGINE: 'django.db.backends.sqlite3'
+       NAME: 'db.sqlite3'
+
+
+CELERY_BROKER_URL: 'redis://localhost:6379/0'
+SECRET_KEY: 'some random text string here'
+ALLOWED_HOSTS: ['*']
+DEBUG: 0
+
+CONF:
+  default_nuclease: 'SpCas9'
+  edits:
+    - design.edits.basic_dna
+    - design.edits.basic_protein
+  nucleases:
+    - design.nucleases.Cas9
+  default_options:
+    nicking_range: 100
+    num_pegs: 5
+    pbs_max_length: 20
+    pbs_min_length: 13
+    primer_max_length: 25
+    primer_max_tm: 63
+    primer_min_length: 18
+    primer_min_tm: 57
+    primer_opt_length: 22
+    primer_opt_tm: 60
+    product_max_size: 300
+    product_min_size: 150
+    rt_max_length: 34
+    rt_min_length: 10
+    spacer_search_range: 100
