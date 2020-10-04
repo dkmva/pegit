@@ -523,7 +523,6 @@ class AlterationTracker:
         """Make oligos for all selected spacers"""
         if not self.number_of_alterations:
             raise Exception('No DNA changes found')
-        print(nuclease, options)
         oligo_sets = self.find_best_spacers(num_pegs, repair, nuclease, **options)
         degenerate_sequence = self.degenerate_sequence(strict=silence_pam == 'strict')
         for oligo_set in oligo_sets:
