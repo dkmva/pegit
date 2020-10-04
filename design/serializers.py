@@ -237,3 +237,11 @@ class EditSerializer(serializers.Serializer):
                     edits.append(edit)
 
         return edits, errors
+
+
+class NucleaseSerializer(serializers.Serializer):
+    name = serializers.CharField(source='__name__')
+    pam = serializers.CharField(source='pam_motif')
+    spacer_length = serializers.IntegerField()
+    cut_site_position = serializers.IntegerField(source='_cut_site_position')
+    scaffolds = serializers.DictField(child=serializers.CharField())

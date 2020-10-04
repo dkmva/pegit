@@ -28,10 +28,10 @@ class AlterationTrackerTestCase(TestCase):
         self.assertEqual(self.tracker.number_of_deletions, 2)
         self.assertEqual(self.tracker.number_of_alterations, 2)
 
-    def test_mutate(self):
-        self.tracker.mutate('A', 2)
+    def test_substitution(self):
+        self.tracker.substitute('A', 2)
         self.assertEqual(str(self.tracker), 'ATaCAGCTAGCAGTACA')
-        self.tracker.mutate('A', 5)
+        self.tracker.substitute('A', 5)
         self.assertEqual(str(self.tracker), 'ATaCAaCTAGCAGTACA')
         self.assertEqual(self.tracker.alteration_string(), 'nnmnnmnnnnnnnnnnn')
         self.assertEqual(self.tracker.number_of_insertions, 0)

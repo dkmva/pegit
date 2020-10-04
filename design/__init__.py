@@ -1,11 +1,28 @@
+import importlib
+import inspect
+
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
-from design.edits import load_edits
-from design.nucleases import load_nucleases
+from design.edits import AbstractEdit, EDITS
+from design.nucleases import Nuclease, NUCLEASES
 
-load_edits()
-load_nucleases()
+
+def auto_import(module_list, base_class, container):
+    """Dynamic import of nucleases and edits."""
+    for module in module_list:
+        module = importlib.import_module(module)
+        for attribute in dir(module):
+            attribute = getattr(module, attribute)
+            if inspect.isclass(attribute) and issubclass(attribute, base_class):
+                # Add all fully implemented to dict
+                if len(attribute.__dict__['__abstractmethods__']) == 0:
+                    container[attribute.__name__] = attribute
+
+
+auto_import(settings.DESIGN_CONF['edits'], AbstractEdit, EDITS)
+auto_import(settings.DESIGN_CONF['nucleases'], Nuclease, NUCLEASES)
+NUCLEASES = dict({settings.DESIGN_CONF['default_nuclease']: NUCLEASES[settings.DESIGN_CONF['default_nuclease']]},  **{k:v for (k,v) in NUCLEASES.items()})
 
 
 try:

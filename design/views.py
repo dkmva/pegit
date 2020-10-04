@@ -12,9 +12,9 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
 from prime.celery import app as celery_app
-from design.edits import EDITS
-from design.serializers import EditSerializer, OrganismSerializer, GeneSerializer, \
-    GeneListSerializer, TranscriptSerializer
+from design import EDITS, NUCLEASES
+from design.serializers import EditSerializer, GeneSerializer, GeneListSerializer, NucleaseSerializer,\
+    OrganismSerializer, TranscriptSerializer
 from design.models import Organism, Gene, Transcript
 from design.interface import Job, JobSerializer, create_oligos_background
 
@@ -109,6 +109,15 @@ class EditViewSet(viewsets.ViewSet):
         return Response(django.conf.settings.DESIGN_CONF['default_options'])
 
 
+class NucleaseViewSet(viewsets.ViewSet):
+
+    serializer_class = NucleaseSerializer
+
+    def list(self, request, *args, **kwargs):
+        serializer = NucleaseSerializer(instance=NUCLEASES.values(), many=True)
+        return Response(serializer.data)
+
+
 class JobViewSet(viewsets.ViewSet):
 
     def list(self, request, *args, **kwargs):
@@ -150,8 +159,9 @@ class JobViewSet(viewsets.ViewSet):
         pk = request.data.get('organism', None)
         edits = request.data.get('edits', None)
         advanced_options = request.data.get('advanced_options', None)
+        nuclease = request.data.get('nuclease', None)
         organism = Organism.objects.get(pk=pk)
-        j = Job(organism, options=advanced_options, edits=edits)
+        j = Job(organism, options=advanced_options, edits=edits, nuclease=nuclease)
         j.save(as_excel=False)
 
         create_oligos_background.delay(j.job_id)
@@ -164,7 +174,8 @@ class JobViewSet(viewsets.ViewSet):
 
         organism = Organism.objects.get(assembly=django.conf.settings.DESIGN_CLINVAR_ORGANISM)
         advanced_options = request.data.get('advanced_options', None)
-        j = Job(organism, options=advanced_options)
+        nuclease = request.data.get('nuclease', None)
+        j = Job(organism, options=advanced_options, nuclease=nuclease)
         j.edits = j.clinvar2edit(edits)
         j.save(as_excel=False)
 

@@ -4,7 +4,7 @@ Module for basic protein alterations
 import itertools
 import regex
 
-from . import AbstractEdit, register_edit
+from . import AbstractEdit
 
 from design.helpers import DEFAULT_CODON_TABLE, DEGENERATE_CODON_TABLE, translate, degenerate_to_nucleotides
 
@@ -15,7 +15,7 @@ class AminoAcidAlteration(AbstractEdit):
     """Substitute amino acids.
 
     ###### Options:
-    * *alteration (str)*: List of amino acid substitions.
+    * *alteration (str)*: List of amino acid substitutions.
     Multiple substitutions can be separated by a semicolon(;).
     * Deletions are denoted with an asterisk (\*)
         * 5N\*.
@@ -63,7 +63,7 @@ class AminoAcidAlteration(AbstractEdit):
             if alteration:
                 m = regex.match(amino_acid_alteration_format, alteration)
                 if not m:
-                    raise ValueError(f"Invalid alteration '{alteration}' of format 'A10B' in mut={options['alteration']}")
+                    raise ValueError(f"Invalid alteration '{alteration}' of format 'A10B' in alteration={options['alteration']}")
 
                 old_amino_acid, position, new_amino_acid = m.groups()
                 position = int(position)
@@ -151,7 +151,7 @@ class AminoAcidAlteration(AbstractEdit):
                             new_codon = codon
 
                 for i, (pos, nucleotide) in enumerate(zip(codon_positions, new_codon)):
-                    tracker.mutate(nucleotide, pos, force=True)
+                    tracker.substitute(nucleotide, pos, force=True)
 
         return tracker
 
@@ -242,7 +242,7 @@ class TagProtein(AminoAcidAlteration):
                 raise ValueError(f"Invalid position {position}. Allowed values are, C, N or a number.")
 
         if tag not in cls.tags.keys():
-            raise ValueError(f"Invalid tag: {tag}. Tag mut be one of: '{','.join(cls.tags.keys())}'")
+            raise ValueError(f"Invalid tag: {tag}. Tag must be one of: '{','.join(cls.tags.keys())}'")
 
         return tag, position
 
@@ -255,7 +255,3 @@ class TagProtein(AminoAcidAlteration):
             parsed_alterations.append(('*', position + i, amino_acid))
 
         return self.run_parsed(parsed_alterations, codon_table)
-
-
-register_edit(AminoAcidAlteration)
-register_edit(TagProtein)

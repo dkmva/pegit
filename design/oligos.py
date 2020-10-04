@@ -1,5 +1,5 @@
 """
-Module for designing cloning oligos based on alteration objects.
+Module for designing cloning oligos.
 """
 from collections import defaultdict
 import copy
@@ -83,7 +83,7 @@ class OligoSet:
                 if pam_dgn < nt_dgn:
                     for nt in nt_dgn:
                         if nt not in pam_dgn:
-                            self.tracker.mutate(nt.lower(), j)
+                            self.tracker.substitute(nt.lower(), j)
                             self.pam_silenced = True
                             break
 
@@ -242,11 +242,11 @@ class AlterationTracker:
 
     def __str__(self):
         sequence = []
-        for pos, muts in zip(self.sequence.values(), self.alteration_list.values()):
-            for nts, mut in zip(pos, muts):
-                if mut == 'd':
+        for pos, alts in zip(self.sequence.values(), self.alteration_list.values()):
+            for nts, alt in zip(pos, alts):
+                if alt == 'd':
                     continue
-                if mut == 'n':
+                if alt == 'n':
                     sequence.append(nts[0])
                 else:
                     sequence.append(nts[0].lower())
@@ -280,7 +280,7 @@ class AlterationTracker:
                 seq.append(nt)
         return ''.join(seq)
 
-    def mutate(self, nucleotide, position, degenerate=None, in_place=True, force=False):
+    def substitute(self, nucleotide, position, degenerate=None, in_place=True, force=False):
         """Make a nucleotide substitution.
 
                 Required arguments:
@@ -304,7 +304,7 @@ class AlterationTracker:
         for dgn in new.degeneracy:
             if i in dgn:
                 if force:
-                    dgn.mutate(position, degenerate)
+                    dgn.substitute(position, degenerate)
                 elif nucleotide.upper() not in dgn[position]:
                     return False
 
@@ -322,7 +322,7 @@ class AlterationTracker:
 
                 Required arguments:
                 nucleotide -- new nucleotide at position
-                position -- position to substitute
+                position -- position of insertion
 
                 Optional arguments:
                 degenerate -- degeneracy allowed at the position (if any), defaults to only new nucleotide
@@ -357,7 +357,7 @@ class AlterationTracker:
         """Delete a nucleotide.
 
                 Required arguments:
-                position -- position to substitute
+                position -- position to delete
 
                 Optional arguments:
                 j -- can be used to specify position by tracker index.
@@ -486,9 +486,9 @@ class AlterationTracker:
         dgn_str = []
         position_index = {idx: i for i, idx in enumerate(self.index)}
 
-        for i, (pos, muts) in enumerate(zip(self.sequence.values(), self.alteration_list.values()), -1):
-            for j, (nts, mut) in enumerate(zip(pos, muts)):
-                if mut == 'd':
+        for i, (pos, alts) in enumerate(zip(self.sequence.values(), self.alteration_list.values()), -1):
+            for j, (nts, alt) in enumerate(zip(pos, alts)):
+                if alt == 'd':
                     dgn_str.append(deletion_symbol)
                 else:
                     position = position_index[(i, j)]
@@ -523,6 +523,7 @@ class AlterationTracker:
         """Make oligos for all selected spacers"""
         if not self.number_of_alterations:
             raise Exception('No DNA changes found')
+        print(nuclease, options)
         oligo_sets = self.find_best_spacers(num_pegs, repair, nuclease, **options)
         degenerate_sequence = self.degenerate_sequence(strict=silence_pam == 'strict')
         for oligo_set in oligo_sets:
@@ -743,7 +744,7 @@ class Degeneracy:
         self.sequence = ''.join(sequence)
         self.end += 1
 
-    def mutate(self, i, dgn):
+    def substitute(self, i, dgn):
         """Make a substitution"""
         self.allowed[i - self.start] = degenerate_to_nucleotides[dgn.upper()]
         sequence = list(self.sequence)

@@ -2,8 +2,7 @@ import abc
 import dataclasses
 import typing
 
-import django
-
+from django.utils.functional import classproperty
 
 NUCLEASES = {}
 
@@ -16,16 +15,27 @@ class OligoDict(typing.TypedDict):
 @dataclasses.dataclass()
 class Nuclease(abc.ABC):
     """Abstract Edit class.
-   Can be subclassed to make functional nucleases
+    Can be subclassed to make functional nucleases
     """
 
     target_motif: str = None  # type: ignore
     pam_motif: str = None  # type: ignore
-    cut_site_position: int = None  # type: ignore
-    downstream_from_cut_site: int = None  # type: ignore
+
+    upstream_length: int = 0
+    downstream_length: int = 0
+    spacer_length: int = None  # type: ignore
+    _cut_site_position: int = None  # type: ignore
 
     scaffolds: typing.Dict = dataclasses.field(default_factory=dict)
     default_scaffold: str = None  # type: ignore
+
+    @classproperty
+    def cut_site_position(cls):
+        return cls.upstream_length + cls._cut_site_position
+
+    @classproperty
+    def downstream_from_cut_site(cls):
+        return (cls.spacer_length + len(cls.pam_motif) + cls.downstream_length) - cls._cut_site_position
 
     @classmethod
     def _scaffold_name_to_sequence(cls, scaffold_name: typing.Optional[str] = None) -> str:
@@ -50,7 +60,7 @@ class Nuclease(abc.ABC):
     @classmethod
     def score_spacers(cls, spacers: typing.List) -> typing.List:
         """Method to calculate score for a list of spacers."""
-        return [None] * len(spacers)
+        return [0] * len(spacers)
 
     @classmethod
     @abc.abstractmethod
@@ -78,16 +88,16 @@ class Nuclease(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def find_spacers(cls, reference_sequence: str, mutated_sequence: str, start: int, end: int,
+    def find_spacers(cls, reference_sequence: str, altered_sequence: str, start: int, end: int,
                      spacer_search_range: int, **options) -> typing.List:
         """
         Method to find pegRNA spacer candidates.
-        Should return spacers within range of mutation
+        Should return spacers within range of alteration
         """
 
     @classmethod
     @abc.abstractmethod
-    def find_nicking_spacers(cls, reference_sequence: str, mutated_sequence: str, spacer_strand: typing.Literal[1, -1],
+    def find_nicking_spacers(cls, reference_sequence: str, altered_sequence: str, spacer_strand: typing.Literal[1, -1],
                              cut_site: int, scaffold: str, nicking_range: int, **options) -> typing.List:
         """
         Method to find nicking spacers for a given pegRNA (cut site and strand).
@@ -105,19 +115,8 @@ class Nuclease(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def _make_rt_sequence(cls, reference, cut_dist, nucleotide_difference, mutation_length, rt_min_length, rt_max_length, **options) -> typing.Tuple[str, typing.List]:
+    def _make_rt_sequence(cls, reference, cut_dist, nucleotide_difference, alteration_length, rt_min_length, rt_max_length, **options) -> typing.Tuple[str, typing.List]:
         """
         Method to find RT template sequence for a pegRNA spacer.
         Should return optimal sequence and a list of alternatives
         """
-
-
-def register_nuclease(nuclease):
-    """Register a nuclease with the global NUCLEASES dict."""
-    NUCLEASES[nuclease.__name__] = nuclease
-
-
-def load_nucleases():
-    for module in django.conf.settings.DESIGN_CONF['nucleases']:
-        __import__(module, globals(), locals())
-

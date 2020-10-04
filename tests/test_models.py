@@ -152,7 +152,7 @@ class OrganismTestCase(TestCase):
     def test_add_to_database_gencode(self):
         Organism.add_to_database('gencode test', 'chr1',
                                  os.path.join(os.path.dirname(os.path.abspath(__file__)), 'testdata', 'gencode.gff'),
-                                 'source', 'gencode', 'sequencesearch', 'gencode test', silent=True)
+                                 'source', 'gencode', 'sequencesearch', 'gencode test', silent=False)
         organism = Organism.objects.first()
         self.assertEqual(organism.name, 'gencode test')
         self.assertEqual(Gene.objects.count(), 10)

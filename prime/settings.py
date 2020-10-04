@@ -17,8 +17,13 @@ import yaml
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-with open(os.path.join(BASE_DIR, 'CONF_local.yaml')) as f:
+with open(os.path.join(BASE_DIR, 'CONF.yaml')) as f:
     conf = yaml.full_load(f)
+try:
+    with open(os.path.join(BASE_DIR, 'CONF_local.yaml')) as f:
+        conf.update(yaml.full_load(f))
+except FileNotFoundError:
+    pass
 
 if conf['DATABASES']['default']['ENGINE'] == 'django.db.backends.sqlite3' and not conf['DATABASES']['default']['NAME'].startswith('/'):
     conf['DATABASES']['default']['NAME'] = os.path.join(BASE_DIR, conf['DATABASES']['default']['NAME'])
@@ -77,8 +82,7 @@ ROOT_URLCONF = 'prime.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'templates')]
-        ,
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

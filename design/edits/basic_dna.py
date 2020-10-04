@@ -3,7 +3,7 @@ Module for basic DNA alterations
 """
 import itertools
 
-from . import AbstractEdit, register_edit
+from . import AbstractEdit
 
 from design.helpers import is_valid_dna
 
@@ -120,17 +120,17 @@ class Substitution(AbstractEdit):
         tracker = self.get_tracker()
 
         deletions = 0
-        for i, (wt, mut) in enumerate(itertools.zip_longest(from_, to_, fillvalue='-'),
+        for i, (wt, alt) in enumerate(itertools.zip_longest(from_, to_, fillvalue='-'),
                                       position):
             if wt == '-':
-                tracker.insert(mut, i - deletions, force=True)
-            elif mut == '-':
+                tracker.insert(alt, i - deletions, force=True)
+            elif alt == '-':
                 assert tracker[i - deletions].lower() == wt.lower()
                 tracker.delete(i - deletions, force=True)
                 deletions += 1
             else:
                 assert tracker[i - deletions].lower() == wt.lower()
-                tracker.mutate(mut, i - deletions, force=True)
+                tracker.substitute(alt, i - deletions, force=True)
 
         return tracker
 
@@ -150,8 +150,3 @@ class Substitution(AbstractEdit):
         if from_.upper() == to_.upper():
             raise ValueError(f"Substituting '{to_}' with '{from_}' will not result in any edits")
         return from_, to_, position
-
-
-register_edit(Insertion)
-register_edit(Deletion)
-register_edit(Substitution)

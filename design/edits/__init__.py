@@ -2,7 +2,6 @@
 prime_design edits
 """
 import abc
-import typing
 
 import django
 import inflection
@@ -32,6 +31,7 @@ class AbstractEdit(abc.ABC):
         options.update(self.parse_option_string(option_string))
         self.repair = 'repair' in options and options['repair'] == 'true'
         self.silence_pam = options.get('silence_pam', False)
+        self.nuclease = options.get('nuclease', None)
         if self.silence_pam == 'false':
             self.silence_pam = False
         try:
@@ -63,7 +63,9 @@ class AbstractEdit(abc.ABC):
 
     def create_oligos(self):
         tracker = self.run()
-        return tracker.make_oligos(repair=self.repair, pbs_length=self.pbs_length, rt_template_length=self.rt_template_length, silence_pam=self.silence_pam, **self.options)
+        return tracker.make_oligos(repair=self.repair, pbs_length=self.pbs_length,
+                                   rt_template_length=self.rt_template_length, silence_pam=self.silence_pam,
+                                   nuclease=self.nuclease, **self.options)
 
     @staticmethod
     def parse_option_string(option_string):
@@ -105,13 +107,3 @@ class AbstractEdit(abc.ABC):
                 self.options[option] = int(options[option])
             else:
                 self.options[option] = defaults[option]
-
-
-def register_edit(edit: typing.Type[AbstractEdit]) -> None:
-    """Register an edit with the global EDITS dict."""
-    EDITS[edit.__name__] = edit
-
-
-def load_edits():
-    for module in django.conf.settings.DESIGN_CONF['edits']:
-        __import__(module, globals(), locals())

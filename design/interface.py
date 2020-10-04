@@ -1,5 +1,6 @@
 from __future__ import annotations
 import copy
+from collections import defaultdict
 import dataclasses
 import itertools
 import enum
@@ -49,6 +50,7 @@ class Job:
     organism: Organism
     options: dict = dataclasses.field(default_factory=dict)
     job_name: str = 'pegIT'
+    nuclease: str = dataclasses.field(default=None)
     status: JobStatus = JobStatus.QUEUED
     job_id: str = dataclasses.field(default_factory=make_uuid_string)
     edits: list = dataclasses.field(default_factory=list)
@@ -60,6 +62,9 @@ class Job:
         options = django.conf.settings.DESIGN_CONF['default_options'].copy()
         options.update(self.options)
         self.options = options
+
+        if self.nuclease is None:
+            self.nuclease = django.conf.settings.DESIGN_CONF['default_nuclease']
 
     def save(self, as_json=True, as_excel=True, jobdir=None, edit_index=None) -> None:
         if jobdir is None:
@@ -291,104 +296,104 @@ class Job:
         """Design pegRNAs for job edits. Saves to jobdir folder"""
         if jobdir is None:
             jobdir = os.path.join(django.conf.settings.DESIGN_OUTPUT_FOLDER, self.job_id)
-        try:
-            self.status = JobStatus.FINDING_PEGRNAS
-            self.results = []
-            self.summary = []
-            self.save(as_excel=False)
-            for i, edit in enumerate(self.edits):
-                sequence_type = edit['sequence_type']
-                sequence = edit['sequence']
-                options = edit['options']
+        #try:
+        self.status = JobStatus.FINDING_PEGRNAS
+        self.results = []
+        self.summary = []
+        self.save(as_excel=False)
+        for i, edit in enumerate(self.edits):
+            sequence_type = edit['sequence_type']
+            sequence = edit['sequence']
+            options = edit['options']
 
-                edit_dict = edit.copy()
-                edit_dict.update({'organism': self.organism.id})
+            edit_dict = edit.copy()
+            edit_dict.update({'organism': self.organism.id})
 
-                result = {'warning': None, 'sequence': sequence, 'sequence_type': sequence_type, 'options': options,
-                          'pegRNAs': [], 'primers': [],
-                          'sequence_object': {
-                              'name': None,
-                              'source': None,
-                              'sequence': None
-                          }}
+            result = {'warning': None, 'sequence': sequence, 'sequence_type': sequence_type, 'options': options,
+                      'pegRNAs': [], 'primers': [],
+                      'sequence_object': {
+                          'name': None,
+                          'source': None,
+                          'sequence': None
+                      }}
 
-                try:
-                    edit, sequence_object, padding = EditSerializer.parse_edit_dict(edit_dict, self.organism.pk, self.options)
-                    result.update(edit.create_oligos())
+            #try:
+            edit, sequence_object, padding = EditSerializer.parse_edit_dict(edit_dict, self.organism.pk, dict({'nuclease': self.nuclease}, **self.options))
+            result.update(edit.create_oligos())
 
-                    if len(result['pegRNAs']) < 1:
-                        result['warning'] = 'No pegRNAs found'
+            if len(result['pegRNAs']) < 1:
+                result['warning'] = 'No pegRNAs found'
 
-                    result['start'] -= padding
-                    result['edit'] = edit.__class__.__name__
-                    result['sequence_object'] = SequenceObjectSerializer(sequence_object).data
-                    if sequence_type == 'custom':
-                        result['sequence'] = ','.join([sequence_object.name, sequence_object.sequence])
-                except (Exception, SoftTimeLimitExceeded) as e:
-                    result['warning'] = f'An unknown error occured, {repr(e)}'
+            result['start'] -= padding
+            result['edit'] = edit.__class__.__name__
+            result['sequence_object'] = SequenceObjectSerializer(sequence_object).data
+            if sequence_type == 'custom':
+                result['sequence'] = ','.join([sequence_object.name, sequence_object.sequence])
+            #except (Exception, SoftTimeLimitExceeded) as e:
+            #    result['warning'] = f'An unknown error occured, {repr(e)}'
 
-                finally:
-                    self.results.append(result)
-                    self.summary.append({
-                        'sequence': result['sequence'],
-                        'sequence_type': sequence_type,
-                        'edit': edit.__class__.__name__,
-                        'options': options,
-                        'pegRNAs': len(result['pegRNAs']),
-                        'warning': result['warning']
-                    })
-                    self.save(as_excel=False, jobdir=jobdir, edit_index=i)
+            #finally:
+            self.results.append(result)
+            self.summary.append({
+                'sequence': result['sequence'],
+                'sequence_type': sequence_type,
+                'edit': edit.__class__.__name__,
+                'options': options,
+                'pegRNAs': len(result['pegRNAs']),
+                'warning': result['warning']
+            })
+            self.save(as_excel=False, jobdir=jobdir, edit_index=i)
 
-            self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
-            self.save(jobdir=jobdir)
+        self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
+        self.save(jobdir=jobdir)
 
-            all_primers = list(itertools.chain.from_iterable([result['primers']for result in self.results]))
-            all_primers = check_primer_specificity(all_primers, self.organism.assembly, os.path.join(
-                                                                           django.conf.settings.DESIGN_OUTPUT_FOLDER,
-                                                                           self.job_id), **self.options)
+        all_primers = list(itertools.chain.from_iterable([result['primers']for result in self.results]))
+        all_primers = check_primer_specificity(all_primers, self.organism.assembly, os.path.join(
+                                                                       django.conf.settings.DESIGN_OUTPUT_FOLDER,
+                                                                       self.job_id), **self.options)
 
-            i = 0
+        i = 0
+        for result in self.results:
+            num_primers = len(result.get('primers', []))
+            result['primers'] = sorted(all_primers[i:i+num_primers], key=lambda x: x['product_count'])
+            i += num_primers
+
+        self.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
+        self.save(jobdir=jobdir)
+
+        spacers = defaultdict(lambda: dict())
+        for result in self.results:
+            for pegRNA in result['pegRNAs']:
+                #if pegRNA['nuclease'] not in spacers:
+                #    spacers[pegRNA['nuclease']] = {}
+                spacers[pegRNA['nuclease']][pegRNA['spacer']] = 1
+                for nicking in pegRNA['nicking']:
+                    spacers[pegRNA['nuclease']][nicking['spacer']] = 1
+
+        for nuclease in spacers:
+            spacers[nuclease] = list(spacers[nuclease].keys())
+            counts, binders = NUCLEASES[nuclease].find_off_targets(spacers[nuclease],
+                                                                   self.organism.assembly,
+                                                                   os.path.join(
+                                                                       django.conf.settings.DESIGN_OUTPUT_FOLDER,
+                                                                       self.job_id))
             for result in self.results:
-                num_primers = len(result.get('primers', []))
-                result['primers'] = sorted(all_primers[i:i+num_primers], key=lambda x: x['product_count'])
-                i += num_primers
+                for i, hits in enumerate(zip(counts, binders)):
+                    for pegRNA in result['pegRNAs']:
+                        if pegRNA['nuclease'] == nuclease and pegRNA['spacer'] == spacers[nuclease][i]:
+                            pegRNA['offtargets'] = hits
+                        for nicking in pegRNA['nicking']:
+                            if pegRNA['nuclease'] == nuclease and nicking['spacer'] == spacers[nuclease][i]:
+                                nicking['offtargets'] = hits
 
-            self.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
-            self.save(jobdir=jobdir)
+        self.status = JobStatus.COMPLETED_STATUS
+        self.save(jobdir=jobdir)
+        #except Exception as e:
+        #    self.status = JobStatus.FAILED_STATUS
+        #    self.warning = f'An unknown error occured, {repr(e)}'
+        #    self.save(jobdir=jobdir)
 
-            spacers = {}
-            for result in self.results:
-                for pegRNA in result['pegRNAs']:
-                    if pegRNA['nuclease'] not in spacers:
-                        spacers[pegRNA['nuclease']] = {}
-                    spacers[pegRNA['nuclease']][pegRNA['spacer']] = 1
-                    for nicking in pegRNA['nicking']:
-                        spacers[pegRNA['nuclease']][nicking['spacer']] = 1
-
-            for nuclease in spacers:
-                spacers[nuclease] = list(spacers[nuclease].keys())
-                counts, binders = NUCLEASES[nuclease].find_off_targets(spacers[nuclease],
-                                                                       self.organism.assembly,
-                                                                       os.path.join(
-                                                                           django.conf.settings.DESIGN_OUTPUT_FOLDER,
-                                                                           self.job_id))
-                for result in self.results:
-                    for i, hits in enumerate(zip(counts, binders)):
-                        for pegRNA in result['pegRNAs']:
-                            if pegRNA['nuclease'] == nuclease and pegRNA['spacer'] == spacers[nuclease][i]:
-                                pegRNA['offtargets'] = hits
-                            for nicking in pegRNA['nicking']:
-                                if pegRNA['nuclease'] == nuclease and nicking['spacer'] == spacers[nuclease][i]:
-                                    nicking['offtargets'] = hits
-
-            self.status = JobStatus.COMPLETED_STATUS
-            self.save(jobdir=jobdir)
-        except Exception as e:
-            self.status = JobStatus.FAILED_STATUS
-            self.warning = f'An unknown error occured, {repr(e)}'
-            self.save(jobdir=jobdir)
-
-            return e
+        #    return e
 
 
 class JobSerializer(serializers.Serializer):
@@ -399,6 +404,7 @@ class JobSerializer(serializers.Serializer):
     summary = serializers.ListField(child=serializers.DictField(child=serializers.CharField()))
     edits = serializers.ListField(child=serializers.DictField(child=serializers.CharField()))
     options = serializers.DictField(child=serializers.IntegerField())
+    nuclease = serializers.CharField(required=False)
     warning = serializers.CharField()
 
 

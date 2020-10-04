@@ -6,12 +6,13 @@ from rest_framework import routers
 from . import views
 
 router = routers.DefaultRouter()
-router.register(r'organisms', views.OrganismViewSet, basename='organism')
-router.register(r'genes', views.GeneViewSet, basename='gene')
-router.register(r'transcripts', views.TranscriptViewSet, basename='transcript')
-router.register(r'edits', views.EditViewSet, basename='edit')
-router.register(r'jobs', views.JobViewSet, basename='job')
 router.register(r'clinvar', views.ClinvarSearch, basename='clinvar')
+router.register(r'edits', views.EditViewSet, basename='edit')
+router.register(r'genes', views.GeneViewSet, basename='gene')
+router.register(r'jobs', views.JobViewSet, basename='job')
+router.register(r'nucleases', views.NucleaseViewSet, basename='nuclease')
+router.register(r'organisms', views.OrganismViewSet, basename='organism')
+router.register(r'transcripts', views.TranscriptViewSet, basename='transcript')
 
 
 favicon_view = RedirectView.as_view(url='/static/favicon.ico', permanent=True)
