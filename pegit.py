@@ -142,7 +142,7 @@ def main():
     add_parser.add_argument('--codon_table', required=False, help='Name of codon usage json file, defaults to human codon usage if not specified')
     add_parser.add_argument('--sequence_search', required=True, help='URL to sequence search')
     add_parser.add_argument('--annotation_name', required=False, help='Name of the annotation, defaults to the basename of the GFF3 file.')
-    add_parser.add_argument('--scaffolds', required=False, help='path to JSON file with scaffolds list')
+    add_parser.add_argument('--scaffolds', required=False, help='path to file with scaffolds list')
 
     # Functions for designing pegRNAs
     design_parser = subparsers.add_parser('design')
