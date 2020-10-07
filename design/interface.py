@@ -76,8 +76,11 @@ class Job:
         for i, edit in enumerate(self.edits):
             try:
                 with open(os.path.join(self.jobdir, f'edit{i}.json')) as f:
-                    data = underscoreize(json.load(f))
+                    data = json.load(f)
+                    primers = data.pop('primers')
+                    data = underscoreize(data)
                     data['pegRNAs'] = data.pop('peg_rn_as')
+                    data['primers'] = primers
                     yield data
             except FileNotFoundError:
                 break
