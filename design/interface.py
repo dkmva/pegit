@@ -54,11 +54,12 @@ class Job:
     status: JobStatus = JobStatus.QUEUED
     job_id: str = dataclasses.field(default_factory=make_uuid_string)
     edits: list = dataclasses.field(default_factory=list)
-    results: list = dataclasses.field(default_factory=list)
     summary: list = dataclasses.field(default_factory=list)
     warning: str = dataclasses.field(default=None)
+    jobdir: str = dataclasses.field(default=None, init=False)
+    output_folder: dataclasses.InitVar(typing.Optional[str]) = None
 
-    def __post_init__(self):
+    def __post_init__(self, output_folder: typing.Optional[str]) -> None:
         options = django.conf.settings.DESIGN_CONF['default_options'].copy()
         options.update(self.options)
         self.options = options
@@ -66,27 +67,38 @@ class Job:
         if self.nuclease is None:
             self.nuclease = django.conf.settings.DESIGN_CONF['default_nuclease']
 
-    def save(self, as_json=True, as_excel=True, jobdir=None, edit_index=None) -> None:
-        if jobdir is None:
-            jobdir = os.path.join(django.conf.settings.DESIGN_OUTPUT_FOLDER, self.job_id)
+        if output_folder is None:
+            output_folder = django.conf.settings.DESIGN_OUTPUT_FOLDER
+        self.jobdir = os.path.join(output_folder, self.job_id)
+
+    @property
+    def results(self):
+        for i, edit in enumerate(self.edits):
+            try:
+                with open(os.path.join(self.jobdir, f'edit{i}.json')) as f:
+                    data = underscoreize(json.load(f))
+                    data['pegRNAs'] = data.pop('peg_rn_as')
+                    yield data
+            except FileNotFoundError:
+                break
+
+    def save_result(self, result, edit_index):
+        with open(os.path.join(self.jobdir, f'edit{edit_index}.json'), 'w') as f:
+            json.dump(camelize(result), f, indent=4)
+
+    def save(self, as_json=True, as_excel=True, edit_index=None) -> None:
         try:
-            os.makedirs(jobdir)
+            os.makedirs(self.jobdir)
         except FileExistsError:
             pass
         if as_json:
-            with open(os.path.join(jobdir, 'summary.json'), 'w') as f:
-                d = camelize(JobSerializer(self).data)
-                del d['organism']['scaffolds']
-                json.dump(d, f, indent=4)
-        if edit_index is None:
-            for i, result in enumerate(self.results):
-                with open(os.path.join(jobdir, f'edit{i}.json'), 'w') as f:
-                    json.dump(camelize(result), f, indent=4)
-        else:
-            with open(os.path.join(jobdir, f'edit{edit_index}.json'), 'w') as f:
-                json.dump(camelize(self.results[edit_index]), f, indent=4)
+            if edit_index is None or edit_index % 10 == 0:
+                with open(os.path.join(self.jobdir, 'summary.json'), 'w') as f:
+                    d = camelize(JobSerializer(self).data)
+                    del d['organism']['scaffolds']
+                    json.dump(d, f, indent=4)
         if as_excel:
-            self.export_excel(jobdir)
+            self.export_excel()
 
     @classmethod
     def load_from_disk(cls, job_id: str) -> Job:
@@ -96,13 +108,12 @@ class Job:
             data['organism'] = Organism.objects.get(pk=data['organism']['id'])
             for s in data['summary']:
                 s['pegRNAs'] = s.pop('peg_rn_as')
-            job = cls(**data)
+            job = cls(**data, output_folder=django.conf.settings.DESIGN_OUTPUT_FOLDER)
             for i, edit in enumerate(job.edits):
                 try:
                     with open(os.path.join(jobdir, f'edit{i}.json')) as f:
                         data = underscoreize(json.load(f))
                         data['pegRNAs'] = data.pop('peg_rn_as')
-                        job.results.append(data)
                 except FileNotFoundError:
                     break
             return job
@@ -171,9 +182,9 @@ class Job:
             edits.append(edit_dict)
         return edits
 
-    def export_excel(self, jobdir: str) -> None:
+    def export_excel(self) -> None:
         """Export jobdata to excel"""
-        writer = pd.ExcelWriter(os.path.join(jobdir, f'{self.job_name}.xlsx'))
+        writer = pd.ExcelWriter(os.path.join(self.jobdir, f'{self.job_name}.xlsx'))
         wb = writer.book
 
         # SUMMARY
@@ -263,7 +274,7 @@ class Job:
                 all_primers.append(d)
                 if j == 0:
                     summary_dict = {'#Edit': i, 'left_sequence': '', 'right_sequence': ''}
-                    summary_dict.update({k:d[k] for k in sorted(d, key=lambda x: (x.startswith('p'), x.startswith('r')))})
+                    summary_dict.update({k: d[k] for k in sorted(d, key=lambda x: (x.startswith('p'), x.startswith('r')))})
                     summary_primers.append(summary_dict)
 
             start_row = 1
@@ -292,13 +303,10 @@ class Job:
         ws[f'A{start_row}'] = 'Primers'
         writer.save()
 
-    def create_oligos(self, jobdir=None):
+    def create_oligos(self):
         """Design pegRNAs for job edits. Saves to jobdir folder"""
-        if jobdir is None:
-            jobdir = os.path.join(django.conf.settings.DESIGN_OUTPUT_FOLDER, self.job_id)
         try:
             self.status = JobStatus.FINDING_PEGRNAS
-            self.results = []
             self.summary = []
             self.save(as_excel=False)
             for i, edit in enumerate(self.edits):
@@ -333,7 +341,7 @@ class Job:
                     result['warning'] = f'An unknown error occured, {repr(e)}'
 
                 finally:
-                    self.results.append(result)
+                    self.save_result(result, i)
                     self.summary.append({
                         'sequence': result['sequence'],
                         'sequence_type': sequence_type,
@@ -342,10 +350,10 @@ class Job:
                         'pegRNAs': len(result['pegRNAs']),
                         'warning': result['warning']
                     })
-                    self.save(as_excel=False, jobdir=jobdir, edit_index=i)
+                    self.save(as_excel=False, edit_index=i)
 
             self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
-            self.save(jobdir=jobdir)
+            self.save()
 
             all_primers = list(itertools.chain.from_iterable([result['primers']for result in self.results]))
             all_primers = check_primer_specificity(all_primers, self.organism.assembly, os.path.join(
@@ -353,19 +361,18 @@ class Job:
                                                                            self.job_id), **self.options)
 
             i = 0
-            for result in self.results:
+            for j, result in enumerate(self.results):
                 num_primers = len(result.get('primers', []))
                 result['primers'] = sorted(all_primers[i:i+num_primers], key=lambda x: x['product_count'])
                 i += num_primers
+                self.save_result(result, j)
 
             self.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
-            self.save(jobdir=jobdir)
+            self.save()
 
             spacers = defaultdict(lambda: dict())
             for result in self.results:
                 for pegRNA in result['pegRNAs']:
-                    #if pegRNA['nuclease'] not in spacers:
-                    #    spacers[pegRNA['nuclease']] = {}
                     spacers[pegRNA['nuclease']][pegRNA['spacer']] = 1
                     for nicking in pegRNA['nicking']:
                         spacers[pegRNA['nuclease']][nicking['spacer']] = 1
@@ -377,21 +384,22 @@ class Job:
                                                                        os.path.join(
                                                                            django.conf.settings.DESIGN_OUTPUT_FOLDER,
                                                                            self.job_id))
-                for result in self.results:
-                    for i, hits in enumerate(zip(counts, binders)):
+                for i, result in enumerate(self.results):
+                    for j, hits in enumerate(zip(counts, binders)):
                         for pegRNA in result['pegRNAs']:
-                            if pegRNA['nuclease'] == nuclease and pegRNA['spacer'] == spacers[nuclease][i]:
+                            if pegRNA['nuclease'] == nuclease and pegRNA['spacer'] == spacers[nuclease][j]:
                                 pegRNA['offtargets'] = hits
                             for nicking in pegRNA['nicking']:
-                                if pegRNA['nuclease'] == nuclease and nicking['spacer'] == spacers[nuclease][i]:
+                                if pegRNA['nuclease'] == nuclease and nicking['spacer'] == spacers[nuclease][j]:
                                     nicking['offtargets'] = hits
+                    self.save_result(result, i)
 
             self.status = JobStatus.COMPLETED_STATUS
-            self.save(jobdir=jobdir)
+            self.save()
         except Exception as e:
             self.status = JobStatus.FAILED_STATUS
             self.warning = f'An unknown error occured, {repr(e)}'
-            self.save(jobdir=jobdir)
+            self.save()
 
             return e
 
