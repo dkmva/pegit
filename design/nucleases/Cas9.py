@@ -170,6 +170,7 @@ class Cas9(Nuclease, abc.ABC):
 
         # Run bowtie on the spacer sequences and parse output for extracting spacer and PAM from 2bit file
         run_bowtie_multi(spacers_file, assembly, bowtie_out)
+        parsed = False
         with open(bowtie_out) as bt:
             f = open(in_file, 'w')
             for i, line in enumerate(bt):
