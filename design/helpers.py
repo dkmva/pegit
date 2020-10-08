@@ -197,39 +197,36 @@ def extract_sequences(seqlist, assembly, outfile):
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
     m = regex.search(r'twoBitReadSeqFrag in \S+ end \((\d+)\) >= seqSize', result.stderr)
 
-    lines = []
     while m:
-        with open(seqlist, 'r') as f:
-            for line in f:
+        with open(seqlist, 'r') as inf, open(f'{seqlist}-2', 'w') as outf:
+            for line in inf:
                 if not line.endswith(f'{m.groups()[0]}\n'):
-                    lines.append(line)
-        with open(f'{seqlist}-2', 'w') as f:
-            for line in lines:
-                f.write(line)
+                    outf.write(line)
+        os.rename(f'{seqlist}-2', seqlist)
         result = subprocess.run(
-            f"{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH} -seqList={seqlist}-2 {django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{assembly}.2bit {outfile}",
+            f"{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH} -seqList={seqlist} {django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{assembly}.2bit {outfile}",
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
         m = regex.search(r'twoBitReadSeqFrag in \S+ end \((\d+)\) >= seqSize', result.stderr)
 
     return outfile
 
 
-def run_bowtie(query, assembly):
+def run_bowtie(query, assembly, output_file):
     """Align a single sequence with bowtie."""
-    cmd = f'{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -a --best --sam-nohead {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 1,5,6,7 -c {query} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}'
-    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii').stdout
+    cmd = f'{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -a --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 1,5,6,7 -c {query} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS} > {output_file}'
+    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
 
-def run_bowtie_multi(queries, assembly):
+def run_bowtie_multi(queries, assembly, output_file):
     """Align a list of sequences with bowtie."""
-    cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -a --best --sam-nohead {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 5,6,7 -r {queries} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}"
-    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii').stdout
+    cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -a --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 5,6,7 -r {queries} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS} > {output_file}"
+    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
 
-def run_bowtie_pairs(pair1, pair2, assembly, product_min_size, product_max_size, **options):
+def run_bowtie_pairs(pair1, pair2, assembly, product_min_size, product_max_size, output_file, **options):
     """Pairwise alignment of two lists of sequences using bowtie."""
-    cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -k 50 --best --sam-nohead {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 2,6,7 -r -1 {pair1} -2 {pair2} -I {int(product_min_size/3)} -X {int(product_max_size*3)} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}"
-    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii').stdout
+    cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -k 50 --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 2,6,7 -r -1 {pair1} -2 {pair2} -I {int(product_min_size/3)} -X {int(product_max_size*3)} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS} > {output_file}"
+    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
 
 def run_primer3(sequence, start, length, product_min_size, product_max_size, primer_min_length, primer_max_length, primer_opt_length, primer_min_tm, primer_max_tm, primer_opt_tm, **options):
@@ -288,26 +285,31 @@ def check_primer_specificity(primers, assembly, write_folder, **options):
         for primer in rv:
             f.write(f'{primer}\n')
 
-    out = run_bowtie_pairs(fwd_file, rev_file, assembly, **options).splitlines()
-    for plus, minus in list(zip(out, out[1:]))[::2]:
-        plus_primer, plus_chr, plus_start, plus_seq, plus_mm = plus.split('\t')
-        plus_start = int(plus_start)
-        plus_seq = list(plus_seq)
-        for mm in regex.findall(mm_pattern, plus_mm):
-            plus_seq[int(mm[0])] = mm[1].lower()
+    bt_file = os.path.join(write_folder, 'bt_out')
 
-        plus_seq = ''.join(plus_seq)
-        minus_primer, minus_chr, minus_start, minus_seq, minus_mm = minus.split('\t')
+    run_bowtie_pairs(fwd_file, rev_file, assembly, output_file=bt_file, **options)
+    with open(bt_file) as f:
+        for plus in f:
+            minus = next(f)
+    #for plus, minus in list(zip(out, out[1:]))[::2]:
+            plus_primer, plus_chr, plus_start, plus_seq, plus_mm = plus.split('\t')
+            plus_start = int(plus_start)
+            plus_seq = list(plus_seq)
+            for mm in regex.findall(mm_pattern, plus_mm):
+                plus_seq[int(mm[0])] = mm[1].lower()
 
-        minus_seq = list(minus_seq)
-        for mm in regex.findall(mm_pattern, minus_mm):
-            minus_seq[int(mm[0])] = mm[1].lower()
-        minus_seq = ''.join(minus_seq)
-        minus_start = int(minus_start)
-        pair = int(plus_primer.split('/')[0]) // 3
-        primers[int(pair)]['products'].add((plus_chr, plus_seq, minus_seq, plus_start,
-                                            minus_start + len(minus_seq),
-                                            minus_start + len(minus_seq) - plus_start))
+            plus_seq = ''.join(plus_seq)
+            minus_primer, minus_chr, minus_start, minus_seq, minus_mm = minus.split('\t')
+
+            minus_seq = list(minus_seq)
+            for mm in regex.findall(mm_pattern, minus_mm):
+                minus_seq[int(mm[0])] = mm[1].lower()
+            minus_seq = ''.join(minus_seq)
+            minus_start = int(minus_start)
+            pair = int(plus_primer.split('/')[0]) // 3
+            primers[int(pair)]['products'].add((plus_chr, plus_seq, minus_seq, plus_start,
+                                                minus_start + len(minus_seq),
+                                                minus_start + len(minus_seq) - plus_start))
     for pair in primers:
         pair['product_count'] = len(list(pair['products']))
         pair['products'] = list(pair['products'])[:5]
