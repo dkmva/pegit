@@ -228,26 +228,26 @@ class Cas9(Nuclease, abc.ABC):
                     parsed = True
                     f = open(in_file, 'w')
 
-        f.close()
-        if not parsed:
-            extracted_sequences = SeqIO.parse(extract_sequences(in_file, assembly, out_file), 'fasta')
-            for record in extracted_sequences:
-                strand = match_to['strand'][record.name]
-                seq = str(record.seq)
-                if strand == '-':
-                    seq = reverse_complement(seq)
-                if not cls._filter_offtarget(seq):
-                    continue
-                # Only first 20 hits are returned, all hits are counted.
-                for idx in match_to['mismatches'][record.name].keys():
-                    counts[idx][match_to['mismatches'][record.name][idx]] += 1
-                    if len(binders[idx]) < 20:
-                        binders[idx].append(
-                            {'off target site': match_to['mismatched_seq'][record.name],
-                             'pam': seq[-len(cls.pam_motif):].upper(),
-                             'chr': match_to['scaffold'][record.name],
-                             'position': match_to['position'][record.name],
-                             'strand': strand, 'mismatches': match_to['mismatches'][record.name][idx]})
+            f.close()
+            if not parsed:
+                extracted_sequences = SeqIO.parse(extract_sequences(in_file, assembly, out_file), 'fasta')
+                for record in extracted_sequences:
+                    strand = match_to['strand'][record.name]
+                    seq = str(record.seq)
+                    if strand == '-':
+                        seq = reverse_complement(seq)
+                    if not cls._filter_offtarget(seq):
+                        continue
+                    # Only first 20 hits are returned, all hits are counted.
+                    for idx in match_to['mismatches'][record.name].keys():
+                        counts[idx][match_to['mismatches'][record.name][idx]] += 1
+                        if len(binders[idx]) < 20:
+                            binders[idx].append(
+                                {'off target site': match_to['mismatched_seq'][record.name],
+                                 'pam': seq[-len(cls.pam_motif):].upper(),
+                                 'chr': match_to['scaffold'][record.name],
+                                 'position': match_to['position'][record.name],
+                                 'strand': strand, 'mismatches': match_to['mismatches'][record.name][idx]})
 
         return counts, binders
 
