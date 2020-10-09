@@ -358,7 +358,7 @@ class Job:
             self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
             self.save()
 
-            all_primers = itertools.chain.from_iterable((result['primers']for result in self.results))
+            all_primers = itertools.chain.from_iterable((result['primers'] for result in self.results))
             all_primers = check_primer_specificity(all_primers, self.organism.assembly, os.path.join(
                                                                            django.conf.settings.DESIGN_OUTPUT_FOLDER,
                                                                            self.job_id), **self.options)
@@ -380,6 +380,8 @@ class Job:
                             result['primers'] = sorted(result['primers'], key=lambda x: x['product_count'])
                             self.save_result(result, result_index)
                             result = next(results)
+                            while len(result['primers']) == 0:
+                                result = next(results)
                             result_index += 1
                             count = 0
                             result['primers'][count]['products'] = set()
@@ -387,7 +389,7 @@ class Job:
                             break
 
                 result['primers'][count]['products'].add(product)
-
+            self.save_result(result, result_index)
             self.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
             self.save()
 
