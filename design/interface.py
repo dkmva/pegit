@@ -358,17 +358,35 @@ class Job:
             self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
             self.save()
 
-            all_primers = list(itertools.chain.from_iterable([result['primers']for result in self.results]))
+            all_primers = itertools.chain.from_iterable((result['primers']for result in self.results))
             all_primers = check_primer_specificity(all_primers, self.organism.assembly, os.path.join(
                                                                            django.conf.settings.DESIGN_OUTPUT_FOLDER,
                                                                            self.job_id), **self.options)
 
-            i = 0
-            for j, result in enumerate(self.results):
-                num_primers = len(result.get('primers', []))
-                result['primers'] = sorted(all_primers[i:i+num_primers], key=lambda x: x['product_count'])
-                i += num_primers
-                self.save_result(result, j)
+            prevpair = 0
+            count = 0
+            result_index = 0
+            results = self.results
+            result = next(results)
+            result['primers'][count]['products'] = set()
+            for pair, product in all_primers:
+                if prevpair != pair:
+                    result['primers'][count]['product_count'] = len(result['primers'][count]['products'])
+                    count += 1
+                    try:
+                        result['primers'][count]['products'] = set()
+                    except IndexError:
+                        try:
+                            result['primers'] = sorted(result['primers'], key=lambda x: x['product_count'])
+                            self.save_result(result, result_index)
+                            result = next(results)
+                            result_index += 1
+                            count = 0
+                            result['primers'][count]['products'] = set()
+                        except StopIteration:
+                            break
+
+                result['primers'][count]['products'].add(product)
 
             self.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
             self.save()

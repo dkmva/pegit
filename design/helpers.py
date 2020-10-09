@@ -264,26 +264,20 @@ PRIMER_MAX_TM={primer_max_tm}
 
 def check_primer_specificity(primers, assembly, write_folder, **options):
     """Align primer pairs to find potential off-targets"""
-    for pair in primers:
-        pair['products'] = set()
 
     mm_pattern = regex.compile(r'(?P<position>\d+):(?P<to>\w)>(?P<from>\w)')
-    fwd = list(chain.from_iterable([[pair['primers']['LEFT']['SEQUENCE'],
-                                     pair['primers']['LEFT']['SEQUENCE'],
-                                     pair['primers']['RIGHT']['SEQUENCE']] for pair in primers]))
-    rv = list(chain.from_iterable([[pair['primers']['LEFT']['SEQUENCE'],
-                                    pair['primers']['RIGHT']['SEQUENCE'],
-                                    pair['primers']['RIGHT']['SEQUENCE']] for pair in primers]))
 
     fwd_file = os.path.join(write_folder, 'fwd')
-    with open(fwd_file, 'w') as f:
-        for primer in fwd:
-            f.write(f'{primer}\n')
-
     rev_file = os.path.join(write_folder, 'rev')
-    with open(rev_file, 'w') as f:
-        for primer in rv:
-            f.write(f'{primer}\n')
+    with open(fwd_file, 'w') as fwd, open(rev_file, 'w') as rev:
+
+        for pair in primers:
+            fwd.write(f"{pair['primers']['LEFT']['SEQUENCE']}\n")
+            fwd.write(f"{pair['primers']['LEFT']['SEQUENCE']}\n")
+            fwd.write(f"{pair['primers']['RIGHT']['SEQUENCE']}\n")
+            rev.write(f"{pair['primers']['LEFT']['SEQUENCE']}\n")
+            rev.write(f"{pair['primers']['RIGHT']['SEQUENCE']}\n")
+            rev.write(f"{pair['primers']['RIGHT']['SEQUENCE']}\n")
 
     bt_file = os.path.join(write_folder, 'bt_out')
 
@@ -291,7 +285,6 @@ def check_primer_specificity(primers, assembly, write_folder, **options):
     with open(bt_file) as f:
         for plus in f:
             minus = next(f)
-    #for plus, minus in list(zip(out, out[1:]))[::2]:
             plus_primer, plus_chr, plus_start, plus_seq, plus_mm = plus.split('\t')
             plus_start = int(plus_start)
             plus_seq = list(plus_seq)
@@ -307,10 +300,8 @@ def check_primer_specificity(primers, assembly, write_folder, **options):
             minus_seq = ''.join(minus_seq)
             minus_start = int(minus_start)
             pair = int(plus_primer.split('/')[0]) // 3
-            primers[int(pair)]['products'].add((plus_chr, plus_seq, minus_seq, plus_start,
+            product = (plus_chr, plus_seq, minus_seq, plus_start,
                                                 minus_start + len(minus_seq),
-                                                minus_start + len(minus_seq) - plus_start))
-    for pair in primers:
-        pair['product_count'] = len(list(pair['products']))
-        pair['products'] = list(pair['products'])[:5]
-    return primers
+                                                minus_start + len(minus_seq) - plus_start)
+
+            yield pair, product
