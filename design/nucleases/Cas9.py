@@ -162,74 +162,47 @@ class Cas9(Nuclease, abc.ABC):
         in_file = os.path.join(write_folder, 'extract_sequences_in')
         out_file = os.path.join(write_folder, 'extract_sequences_out')
         spacers_file = os.path.join(write_folder, 'spacers')
-        bowtie_out = os.path.join(write_folder, 'bt_out')
 
         with open(spacers_file, 'w') as f:
             for spacer in spacer_sequences:
                 f.write(f'{spacer}\n')
 
         # Run bowtie on the spacer sequences and parse output for extracting spacer and PAM from 2bit file
-        run_bowtie_multi(spacers_file, assembly, bowtie_out)
+        bowtie_out = run_bowtie_multi(spacers_file, assembly)
         parsed = False
-        with open(bowtie_out) as bt:
-            f = open(in_file, 'w')
-            for i, line in enumerate(bt):
-                parsed = False
-                line = line.strip('\n')
-                index, strand, scaffold, position, mismatches = line.split('\t')
-                position = int(position)
-                index = int(index)
-                mismatches = regex.findall(mm_pattern, mismatches)
+        #with open(bowtie_out) as bt:
+        f = open(in_file, 'w')
+        for i, line in enumerate(bowtie_out):
+            parsed = False
+            line = line.strip('\n')
+            index, strand, scaffold, position, mismatches = line.split('\t')
+            position = int(position)
+            index = int(index)
+            mismatches = regex.findall(mm_pattern, mismatches)
 
-                match = list(spacer_sequences[index].upper())
-                if strand == '+':
-                    position_string = f'{scaffold}:{position}-{position + spacer_len + len(cls.pam_motif)}'
-                    for mm in mismatches:
-                        match[int(mm[0])] = mm[1].lower()
-                else:
-                    if (position - len(cls.pam_motif)) < 0:
-                        continue
-                    position_string = f'{scaffold}:{position - len(cls.pam_motif)}-{position + spacer_len}'
-                    for mm in mismatches:
-                        match[int(mm[0])] = complement(mm[1].lower())
-                f.write(f'{position_string}\n')
-                match = ''.join(match)
+            match = list(spacer_sequences[index].upper())
+            if strand == '+':
+                position_string = f'{scaffold}:{position}-{position + spacer_len + len(cls.pam_motif)}'
+                for mm in mismatches:
+                    match[int(mm[0])] = mm[1].lower()
+            else:
+                if (position - len(cls.pam_motif)) < 0:
+                    continue
+                position_string = f'{scaffold}:{position - len(cls.pam_motif)}-{position + spacer_len}'
+                for mm in mismatches:
+                    match[int(mm[0])] = complement(mm[1].lower())
+            f.write(f'{position_string}\n')
+            match = ''.join(match)
 
-                match_to['strand'][position_string] = strand
-                match_to['mismatches'][position_string][index] = len(mismatches)
-                match_to['position'][position_string] = position
-                match_to['scaffold'][position_string] = scaffold
-                match_to['mismatched_seq'][position_string] = match
+            match_to['strand'][position_string] = strand
+            match_to['mismatches'][position_string][index] = len(mismatches)
+            match_to['position'][position_string] = position
+            match_to['scaffold'][position_string] = scaffold
+            match_to['mismatched_seq'][position_string] = match
 
-                if (i+1) % 100000 == 0:
-                    f.close()
-                    # Get the sequences from 2bit file, filter out hits without a potential PAM
-                    extracted_sequences = SeqIO.parse(extract_sequences(in_file, assembly, out_file), 'fasta')
-                    for record in extracted_sequences:
-                        strand = match_to['strand'][record.name]
-                        seq = str(record.seq)
-                        if strand == '-':
-                            seq = reverse_complement(seq)
-                        if not cls._filter_offtarget(seq):
-                            continue
-                        # Only first 20 hits are returned, all hits are counted.
-                        for idx in match_to['mismatches'][record.name].keys():
-                            counts[idx][match_to['mismatches'][record.name][idx]] += 1
-                            if len(binders[idx]) < 20:
-                                binders[idx].append(
-                                    {'off target site': match_to['mismatched_seq'][record.name], 'pam': seq[-len(cls.pam_motif):].upper(),
-                                     'chr': match_to['scaffold'][record.name],
-                                     'position': match_to['position'][record.name],
-                                     'strand': strand, 'mismatches': match_to['mismatches'][record.name][idx]})
-                    match_to = {
-                        'strand': {}, 'mismatches': defaultdict(dict), 'mismatched_seq': {}, 'position': {},
-                        'scaffold': {}
-                    }
-                    parsed = True
-                    f = open(in_file, 'w')
-
-            f.close()
-            if not parsed:
+            if (i+1) % 100000 == 0:
+                f.close()
+                # Get the sequences from 2bit file, filter out hits without a potential PAM
                 extracted_sequences = SeqIO.parse(extract_sequences(in_file, assembly, out_file), 'fasta')
                 for record in extracted_sequences:
                     strand = match_to['strand'][record.name]
@@ -243,11 +216,37 @@ class Cas9(Nuclease, abc.ABC):
                         counts[idx][match_to['mismatches'][record.name][idx]] += 1
                         if len(binders[idx]) < 20:
                             binders[idx].append(
-                                {'off target site': match_to['mismatched_seq'][record.name],
-                                 'pam': seq[-len(cls.pam_motif):].upper(),
+                                {'off target site': match_to['mismatched_seq'][record.name], 'pam': seq[-len(cls.pam_motif):].upper(),
                                  'chr': match_to['scaffold'][record.name],
                                  'position': match_to['position'][record.name],
                                  'strand': strand, 'mismatches': match_to['mismatches'][record.name][idx]})
+                match_to = {
+                    'strand': {}, 'mismatches': defaultdict(dict), 'mismatched_seq': {}, 'position': {},
+                    'scaffold': {}
+                }
+                parsed = True
+                f = open(in_file, 'w')
+
+        f.close()
+        if not parsed:
+            extracted_sequences = SeqIO.parse(extract_sequences(in_file, assembly, out_file), 'fasta')
+            for record in extracted_sequences:
+                strand = match_to['strand'][record.name]
+                seq = str(record.seq)
+                if strand == '-':
+                    seq = reverse_complement(seq)
+                if not cls._filter_offtarget(seq):
+                    continue
+                # Only first 20 hits are returned, all hits are counted.
+                for idx in match_to['mismatches'][record.name].keys():
+                    counts[idx][match_to['mismatches'][record.name][idx]] += 1
+                    if len(binders[idx]) < 20:
+                        binders[idx].append(
+                            {'off target site': match_to['mismatched_seq'][record.name],
+                             'pam': seq[-len(cls.pam_motif):].upper(),
+                             'chr': match_to['scaffold'][record.name],
+                             'position': match_to['position'][record.name],
+                             'strand': strand, 'mismatches': match_to['mismatches'][record.name][idx]})
 
         return counts, binders
 

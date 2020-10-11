@@ -1,4 +1,4 @@
-from itertools import zip_longest, chain
+from itertools import zip_longest
 import json
 import mmap
 import os.path
@@ -177,7 +177,7 @@ def extract_sequence(assembly, chromosome, strand, start=None, end=None):
     else:
         end = ''
     result = subprocess.run(f'{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH} -seq={chromosome}{start}{end} {django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{assembly}.2bit stdout',
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
 
     m = regex.search(r'>= seqSize \((\d+)\)', result.stderr)
     if m:
@@ -194,7 +194,7 @@ def extract_sequence(assembly, chromosome, strand, start=None, end=None):
 def extract_sequences(seqlist, assembly, outfile):
     """Get multiple DNA sequences from a 2bit file"""
     result = subprocess.run(f"{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH} -seqList={seqlist} {django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{assembly}.2bit {outfile}",
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
     m = regex.search(r'twoBitReadSeqFrag in \S+ end \((\d+)\) >= seqSize', result.stderr)
 
     while m:
@@ -211,22 +211,35 @@ def extract_sequences(seqlist, assembly, outfile):
     return outfile
 
 
-def run_bowtie(query, assembly, output_file):
+def run_bowtie(query, assembly):
     """Align a single sequence with bowtie."""
-    cmd = f'{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -a --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 1,5,6,7 -c {query} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS} > {output_file}'
-    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    cmd = f'{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -a --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 1,5,6,7 -c {query} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}'
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+    for line in iter(p.stdout.readline, ''):
+        yield line
+    p.stdout.close()
+    #return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
 
-def run_bowtie_multi(queries, assembly, output_file):
+def run_bowtie_multi(queries, assembly):
     """Align a list of sequences with bowtie."""
-    cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -a --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 5,6,7 -r {queries} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS} > {output_file}"
-    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -a --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 5,6,7 -r {queries} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}"
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+    for line in iter(p.stdout.readline, ''):
+        yield line
+    #return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
 
-def run_bowtie_pairs(pair1, pair2, assembly, product_min_size, product_max_size, output_file, **options):
+def run_bowtie_pairs(pair1, pair2, assembly, product_min_size, product_max_size, **options):
     """Pairwise alignment of two lists of sequences using bowtie."""
-    cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -k 50 --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 2,6,7 -r -1 {pair1} -2 {pair2} -I {int(product_min_size/3)} -X {int(product_max_size*3)} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS} > {output_file}"
-    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -k 50 --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 2,6,7 -r -1 {pair1} -2 {pair2} -I {int(product_min_size/3)} -X {int(product_max_size*3)} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}"
+
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+
+    for line in iter(p.stdout.readline, ''):
+        yield line
+
+    #return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
 
 def run_primer3(sequence, start, length, product_min_size, product_max_size, primer_min_length, primer_max_length, primer_opt_length, primer_min_tm, primer_max_tm, primer_opt_tm, **options):
@@ -272,6 +285,7 @@ def check_primer_specificity(primers, assembly, write_folder, **options):
     with open(fwd_file, 'w') as fwd, open(rev_file, 'w') as rev:
 
         for pair in primers:
+            print(pair)
             fwd.write(f"{pair['primers']['LEFT']['SEQUENCE']}\n")
             fwd.write(f"{pair['primers']['LEFT']['SEQUENCE']}\n")
             fwd.write(f"{pair['primers']['RIGHT']['SEQUENCE']}\n")
@@ -279,29 +293,26 @@ def check_primer_specificity(primers, assembly, write_folder, **options):
             rev.write(f"{pair['primers']['RIGHT']['SEQUENCE']}\n")
             rev.write(f"{pair['primers']['RIGHT']['SEQUENCE']}\n")
 
-    bt_file = os.path.join(write_folder, 'bt_out')
+    f = run_bowtie_pairs(fwd_file, rev_file, assembly, **options)
+    for plus in f:
+        minus = next(f)
+        plus_primer, plus_chr, plus_start, plus_seq, plus_mm = plus.split('\t')
+        plus_start = int(plus_start)
+        plus_seq = list(plus_seq)
+        for mm in regex.findall(mm_pattern, plus_mm):
+            plus_seq[int(mm[0])] = mm[1].lower()
 
-    run_bowtie_pairs(fwd_file, rev_file, assembly, output_file=bt_file, **options)
-    with open(bt_file) as f:
-        for plus in f:
-            minus = next(f)
-            plus_primer, plus_chr, plus_start, plus_seq, plus_mm = plus.split('\t')
-            plus_start = int(plus_start)
-            plus_seq = list(plus_seq)
-            for mm in regex.findall(mm_pattern, plus_mm):
-                plus_seq[int(mm[0])] = mm[1].lower()
+        plus_seq = ''.join(plus_seq)
+        minus_primer, minus_chr, minus_start, minus_seq, minus_mm = minus.split('\t')
 
-            plus_seq = ''.join(plus_seq)
-            minus_primer, minus_chr, minus_start, minus_seq, minus_mm = minus.split('\t')
+        minus_seq = list(minus_seq)
+        for mm in regex.findall(mm_pattern, minus_mm):
+            minus_seq[int(mm[0])] = mm[1].lower()
+        minus_seq = ''.join(minus_seq)
+        minus_start = int(minus_start)
+        pair = int(plus_primer.split('/')[0]) // 3
+        product = (plus_chr, plus_seq, minus_seq, plus_start,
+                                            minus_start + len(minus_seq),
+                                            minus_start + len(minus_seq) - plus_start)
 
-            minus_seq = list(minus_seq)
-            for mm in regex.findall(mm_pattern, minus_mm):
-                minus_seq[int(mm[0])] = mm[1].lower()
-            minus_seq = ''.join(minus_seq)
-            minus_start = int(minus_start)
-            pair = int(plus_primer.split('/')[0]) // 3
-            product = (plus_chr, plus_seq, minus_seq, plus_start,
-                                                minus_start + len(minus_seq),
-                                                minus_start + len(minus_seq) - plus_start)
-
-            yield pair, product
+        yield pair, product
