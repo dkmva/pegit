@@ -22,6 +22,31 @@ from design.models import Organism
 from design.nucleases import NUCLEASES
 from design.serializers import OrganismSerializer, EditSerializer
 
+# Monkey patch pandas to write excel files by rows instead of columns.
+# Enables writing excel files without putting everything into memory.
+# https://github.com/pandas-dev/pandas/issues/34710
+from pandas.io.formats.excel import ExcelFormatter, ExcelCell
+
+
+def write_excel_by_rows(self, coloffset: int):
+    if self.styler is None:
+        styles = None
+    else:
+        styles = self.styler._compute().ctx
+        if not styles:
+            styles = None
+    xlstyle = None
+    for rowidx in range(self.df.shape[0]):
+        for colidx in range(len(self.columns)):
+            if styles is not None:
+                xlstyle = self.style_converter(";".join(styles[rowidx, colidx]))
+            yield ExcelCell(self.rowcounter + rowidx, colidx + coloffset, self.df.iloc[rowidx, colidx], xlstyle)
+
+
+ExcelFormatter._generate_body = write_excel_by_rows
+# Monkey patch done
+
+
 Entrez.email = django.conf.settings.DESIGN_ENTREZ_EMAIL
 
 
@@ -89,17 +114,16 @@ class Job:
         with open(os.path.join(self.jobdir, f'edit{edit_index}.json'), 'w') as f:
             json.dump(camelize(result), f, indent=4)
 
-    def save(self, as_json=True, as_excel=True, edit_index=None) -> None:
+    def save(self, as_json=True, as_excel=True) -> None:
         try:
             os.makedirs(self.jobdir)
         except FileExistsError:
             pass
         if as_json:
-            if edit_index is None or edit_index % 10 == 0:
-                with open(os.path.join(self.jobdir, 'summary.json'), 'w') as f:
-                    d = camelize(JobSerializer(self).data)
-                    del d['organism']['scaffolds']
-                    json.dump(d, f, indent=4)
+            with open(os.path.join(self.jobdir, 'summary.json'), 'w') as f:
+                d = camelize(JobSerializer(self).data)
+                del d['organism']['scaffolds']
+                json.dump(d, f, indent=4)
         if as_excel:
             self.export_excel()
 
@@ -112,13 +136,6 @@ class Job:
             for s in data['summary']:
                 s['pegRNAs'] = s.pop('peg_rn_as')
             job = cls(**data, output_folder=django.conf.settings.DESIGN_OUTPUT_FOLDER)
-            for i, edit in enumerate(job.edits):
-                try:
-                    with open(os.path.join(jobdir, f'edit{i}.json')) as f:
-                        data = underscoreize(json.load(f))
-                        data['pegRNAs'] = data.pop('peg_rn_as')
-                except FileNotFoundError:
-                    break
             return job
 
     def import_edit_list(self, edit_list: str) -> None:
@@ -187,28 +204,27 @@ class Job:
 
     def export_excel(self) -> None:
         """Export jobdata to excel"""
-        writer = pd.ExcelWriter(os.path.join(self.jobdir, f'{self.job_name}.xlsx'))
+        writer = pd.ExcelWriter(os.path.join(self.jobdir, f'{self.job_name}.xlsx'), engine='xlsxwriter',
+                                options=dict(constant_memory=True))
         wb = writer.book
+        heading = wb.add_format({'bold': True, 'font_size': 15})
+        ws = wb.add_worksheet('Summary')
+        writer.sheets['Summary'] = ws
 
         # SUMMARY
-        summary = pd.DataFrame(self.summary)
-        summary.to_excel(writer, 'Summary', index=False, startrow=8)
-        ws = wb['Summary']
-        ws[f'A8'] = 'Edits'
-        ws[f'A8'].style = 'Headline 1'
-
         organism = OrganismSerializer(self.organism).data
         del organism['scaffolds']
 
+        ws.write('A1', 'Organism', heading)
+
         pd.DataFrame([organism]).to_excel(writer, 'Summary', index=False, startrow=1)
-        ws[f'A1'] = 'Organism'
-        ws[f'A1'].style = 'Headline 1'
-
+        ws = wb.get_worksheet_by_name('Summary')
+        ws.write('A5', 'Options', heading)
         pd.DataFrame([self.options]).to_excel(writer, 'Summary', index=False, startrow=5)
-        ws[f'A5'] = 'Options'
-        ws[f'A5'].style = 'Headline 1'
 
-        writer.save()
+        summary = pd.DataFrame(self.summary)
+        ws.write('A8', 'Edits', heading)
+        summary.to_excel(writer, 'Summary', index=False, startrow=8)
 
         summary_pegrnas = []
         summary_primers = []
@@ -282,12 +298,12 @@ class Job:
 
             start_row = 1
 
+            ws = wb.add_worksheet(wsname)
+            writer.sheets[wsname] = ws
             for j, df in enumerate([pegRNAs, all_nicking, all_primers, all_alternate]):
+                ws.write(f'A{start_row}', ['pegRNAs', 'nsgRNAs', 'primers', 'alternate extensions'][j], heading)
                 df = pd.DataFrame(df)
                 df.to_excel(writer, wsname, index=False, startrow=start_row)
-                ws = wb[wsname]
-                ws[f'A{start_row}'] = ['pegRNAs', 'nsgRNAs', 'primers', 'alternate extensions'][j]
-                ws[f'A{start_row}'].style = 'Headline 1'
                 start_row += len(df.index) + 3
             summary_dict = {'#Edit': i}
             summary_dict.update(pegRNAs[0])
@@ -295,16 +311,61 @@ class Job:
             summary_pegrnas.append(summary_dict)
 
         start_row = 8
-        ws = wb['Summary']
+        ws = wb.get_worksheet_by_name('Summary')
         start_row += len(summary.index) + 3
+        ws.write(f'A{start_row}', 'pegRNAs', heading)
         pd.DataFrame(summary_pegrnas).to_excel(writer, 'Summary', index=False, startrow=start_row)
-        ws[f'A{start_row}'].style = 'Headline 1'
-        ws[f'A{start_row}'] = 'pegRNAs'
         start_row += len(summary_pegrnas) + 3
+        ws.write(f'A{start_row}', 'Primers', heading)
         pd.DataFrame(summary_primers).to_excel(writer, 'Summary', index=False, startrow=start_row)
-        ws[f'A{start_row}'].style = 'Headline 1'
-        ws[f'A{start_row}'] = 'Primers'
         writer.save()
+
+    def _design_edit(self, i):
+        edit = self.edits[i]
+        sequence_type = edit['sequence_type']
+        sequence = edit['sequence']
+        options = edit['options']
+
+        edit_dict = edit.copy()
+        edit_dict.update({'organism': self.organism.id})
+
+        result = {'warning': None, 'sequence': sequence, 'sequence_type': sequence_type, 'options': options,
+                  'pegRNAs': [], 'primers': [],
+                  'sequence_object': {
+                      'name': None,
+                      'source': None,
+                      'sequence': None
+                  }}
+
+        try:
+            edit, sequence_object, padding = EditSerializer.parse_edit_dict(edit_dict, self.organism.pk,
+                                                                            dict({'nuclease': self.nuclease},
+                                                                                 **self.options))
+            result.update(edit.create_oligos())
+
+            if len(result['pegRNAs']) < 1:
+                result['warning'] = 'No pegRNAs found'
+
+            result['start'] -= padding
+            result['edit'] = edit.__class__.__name__
+            result['sequence_object'] = SequenceObjectSerializer(sequence_object).data
+            if sequence_type == 'custom':
+                result['sequence'] = ','.join([sequence_object.name, sequence_object.sequence])
+        except Exception as e:
+            result['warning'] = f'An unknown error occured, {repr(e)}'
+
+        finally:
+            self.save_result(result, i)
+            self.summary.append({
+                'sequence': result['sequence'],
+                'sequence_type': sequence_type,
+                'edit': edit.__class__.__name__,
+                'options': options,
+                'pegRNAs': len(result['pegRNAs']),
+                'warning': result['warning']
+            })
+
+            return result
 
     def create_oligos(self):
         """Design pegRNAs for job edits. Saves to jobdir folder"""
@@ -312,52 +373,14 @@ class Job:
             self.status = JobStatus.FINDING_PEGRNAS
             self.summary = []
             self.save(as_excel=False)
-            for i, edit in enumerate(self.edits):
-                sequence_type = edit['sequence_type']
-                sequence = edit['sequence']
-                options = edit['options']
-
-                edit_dict = edit.copy()
-                edit_dict.update({'organism': self.organism.id})
-
-                result = {'warning': None, 'sequence': sequence, 'sequence_type': sequence_type, 'options': options,
-                          'pegRNAs': [], 'primers': [],
-                          'sequence_object': {
-                              'name': None,
-                              'source': None,
-                              'sequence': None
-                          }}
-
-                try:
-                    edit, sequence_object, padding = EditSerializer.parse_edit_dict(edit_dict, self.organism.pk, dict({'nuclease': self.nuclease}, **self.options))
-                    result.update(edit.create_oligos())
-
-                    if len(result['pegRNAs']) < 1:
-                        result['warning'] = 'No pegRNAs found'
-
-                    result['start'] -= padding
-                    result['edit'] = edit.__class__.__name__
-                    result['sequence_object'] = SequenceObjectSerializer(sequence_object).data
-                    if sequence_type == 'custom':
-                        result['sequence'] = ','.join([sequence_object.name, sequence_object.sequence])
-                except Exception as e:
-                    result['warning'] = f'An unknown error occured, {repr(e)}'
-
-                finally:
-                    self.save_result(result, i)
-                    self.summary.append({
-                        'sequence': result['sequence'],
-                        'sequence_type': sequence_type,
-                        'edit': edit.__class__.__name__,
-                        'options': options,
-                        'pegRNAs': len(result['pegRNAs']),
-                        'warning': result['warning']
-                    })
-                    self.save(as_excel=False, edit_index=i)
+            for i in range(len(self.edits)):
+                self._design_edit(i)
+                self.save(as_excel=False)
 
             self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
+            print('here')
             self.save()
-
+            print('there')
             all_primers = itertools.chain.from_iterable((result['primers'] for result in self.results))
             all_primers = check_primer_specificity(all_primers, self.organism.assembly, os.path.join(
                                                                            django.conf.settings.DESIGN_OUTPUT_FOLDER,
@@ -368,6 +391,9 @@ class Job:
             result_index = 0
             results = self.results
             result = next(results)
+            while len(result['primers']) == 0:
+                result = next(results)
+                result_index += 1
             result['primers'][count]['products'] = set()
             for pair, product in all_primers:
                 if prevpair != pair:
@@ -380,9 +406,10 @@ class Job:
                             result['primers'] = sorted(result['primers'], key=lambda x: x['product_count'])
                             self.save_result(result, result_index)
                             result = next(results)
+                            result_index += 1
                             while len(result['primers']) == 0:
                                 result = next(results)
-                            result_index += 1
+                                result_index += 1
                             count = 0
                             result['primers'][count]['products'] = set()
                         except StopIteration:
