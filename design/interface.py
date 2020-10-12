@@ -79,8 +79,9 @@ class Job:
     status: JobStatus = JobStatus.QUEUED
     job_id: str = dataclasses.field(default_factory=make_uuid_string)
     edits: list = dataclasses.field(default_factory=list)
+    results: list = dataclasses.field(default_factory=list)
     summary: list = dataclasses.field(default_factory=list)
-    warning: str = dataclasses.field(default=None)
+    warning: typing.Optional[str] = dataclasses.field(default=None)
     jobdir: str = dataclasses.field(default=None, init=False)
     output_folder: dataclasses.InitVar(typing.Optional[str]) = None
 
@@ -188,7 +189,11 @@ class Job:
         edits = []
         for i, record in enumerate(records['DocumentSummarySet']['DocumentSummary']):
             variation_set = record['variation_set'][0]
-            chromosome, position, from_, to_ = variation_set['canonical_spdi'].split(':')
+            try:
+                chromosome, position, from_, to_ = variation_set['canonical_spdi'].split(':')
+            except (ValueError, KeyError):
+                print(f'Could not find/parse Canonical SPDI, line {i}')
+                continue
 
             edit_dict = {
                 'sequence_type': 'genomic',
@@ -371,6 +376,7 @@ class Job:
         """Design pegRNAs for job edits. Saves to jobdir folder"""
         try:
             self.status = JobStatus.FINDING_PEGRNAS
+            self.warning = None
             self.summary = []
             self.save(as_excel=False)
             for i in range(len(self.edits)):
@@ -378,9 +384,8 @@ class Job:
                 self.save(as_excel=False)
 
             self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
-            print('here')
             self.save()
-            print('there')
+
             all_primers = itertools.chain.from_iterable((result['primers'] for result in self.results))
             all_primers = check_primer_specificity(all_primers, self.organism.assembly, os.path.join(
                                                                            django.conf.settings.DESIGN_OUTPUT_FOLDER,
@@ -394,7 +399,10 @@ class Job:
             while len(result['primers']) == 0:
                 result = next(results)
                 result_index += 1
-            result['primers'][count]['products'] = set()
+            try:
+                result['primers'][count]['products'] = set()
+            except IndexError:
+                pass
             for pair, product in all_primers:
                 if prevpair != pair:
                     result['primers'][count]['product_count'] = len(result['primers'][count]['products'])
@@ -489,4 +497,6 @@ def create_oligos_background(job_id: str) -> None:
     e = job.create_oligos()
 
     if isinstance(e, Exception):
+        job.status = JobStatus.FAILED_STATUS
+        job.save(as_excel=False)
         raise e

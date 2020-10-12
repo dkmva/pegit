@@ -52,12 +52,12 @@ def run_organism(namespace) -> None:
     jobdir = os.path.join(output_folder, job_name)
     organism = Organism.objects.get(pk=organism)
 
-    j = Job(organism, options=options, job_id=job_name, job_name=job_name)
+    j = Job(organism, options=options, job_id=job_name, job_name=job_name, output_folder=output_folder)
     print('Parsing edit list')
     j.import_edit_list(edits)
     print('Designing oligos')
-    j.create_oligos(jobdir=jobdir)
-    print(f'Oligos saved to {jobdir}')
+    j.create_oligos()
+    print(f'Oligos saved to {j.jobdir}')
 
 
 def run_clinvar(namespace) -> None:
@@ -69,12 +69,12 @@ def run_clinvar(namespace) -> None:
     job_name = options.pop('job_name')
     jobdir = os.path.join(output_folder, job_name)
 
-    j = Job(organism, options=options, job_id=job_name, job_name=job_name)
+    j = Job(organism, options=options, job_id=job_name, job_name=job_name, output_folder=output_folder)
     print('Parsing edit list')
     j.import_clinvar_list(edits)
     print('Designing oligos')
-    j.create_oligos(jobdir=jobdir)
-    print(f'Oligos saved to {jobdir}')
+    j.create_oligos()
+    print(f'Oligos saved to {j.jobdir}')
 
 
 def make_2bit_and_scaffold_list(namespace) -> None:
