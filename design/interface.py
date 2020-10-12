@@ -79,7 +79,6 @@ class Job:
     status: JobStatus = JobStatus.QUEUED
     job_id: str = dataclasses.field(default_factory=make_uuid_string)
     edits: list = dataclasses.field(default_factory=list)
-    results: list = dataclasses.field(default_factory=list)
     summary: list = dataclasses.field(default_factory=list)
     warning: typing.Optional[str] = dataclasses.field(default=None)
     jobdir: str = dataclasses.field(default=None, init=False)
