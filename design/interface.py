@@ -106,7 +106,7 @@ class Job:
                     data = underscoreize(data)
                     data['pegRNAs'] = data.pop('peg_rn_as')
                     data['primers'] = primers
-                    yield data
+                yield data
             except FileNotFoundError:
                 break
 

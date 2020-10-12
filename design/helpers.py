@@ -285,7 +285,6 @@ def check_primer_specificity(primers, assembly, write_folder, **options):
     with open(fwd_file, 'w') as fwd, open(rev_file, 'w') as rev:
 
         for pair in primers:
-            print(pair)
             fwd.write(f"{pair['primers']['LEFT']['SEQUENCE']}\n")
             fwd.write(f"{pair['primers']['LEFT']['SEQUENCE']}\n")
             fwd.write(f"{pair['primers']['RIGHT']['SEQUENCE']}\n")
