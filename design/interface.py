@@ -115,10 +115,7 @@ class Job:
             json.dump(camelize(result), f, indent=4)
 
     def save(self, as_json=True, as_excel=True) -> None:
-        try:
-            os.makedirs(self.jobdir)
-        except FileExistsError:
-            pass
+        os.makedirs(os.path.join(self.jobdir, 'excel_tmp'), exist_ok=True)
         if as_json:
             with open(os.path.join(self.jobdir, 'summary.json'), 'w') as f:
                 d = camelize(JobSerializer(self).data)
@@ -209,7 +206,7 @@ class Job:
     def export_excel(self) -> None:
         """Export jobdata to excel"""
         writer = pd.ExcelWriter(os.path.join(self.jobdir, f'{self.job_name}.xlsx'), engine='xlsxwriter',
-                                options=dict(constant_memory=True))
+                                options=dict(constant_memory=True, tmpdir=os.path.join(self.jobdir, 'excel_tmp')))
         wb = writer.book
         heading = wb.add_format({'bold': True, 'font_size': 15})
         ws = wb.add_worksheet('Summary')
