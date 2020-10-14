@@ -196,10 +196,21 @@ CELERY_ACCEPT_CONTENT = ['application/json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_RESULT_BACKEND = 'redis'
 
 CELERY_TASK_ACKS_LATE = True
-CELERY_PREFETCH_MULTIPLIER = 1
-CELERY_WORKER_CONCURRENCY = 1
-CELERY_PREFETCH_COUNT = 1
+#CELERY_PREFETCH_MULTIPLIER = 1
+#CELERY_WORKER_CONCURRENCY = 16
+#CELERY_PREFETCH_COUNT = 1
+CELERY_TASK_ROUTES = {
+    'design.interface.design_edit_background': {'queue': 'design_queue'},
+    'design.interface.update_summary': {'queue': 'design_queue'},
+    'design.interface.queue_primer_specificity': {'queue': 'design_queue'},
+    'design.interface.queue_spacer_specificity': {'queue': 'design_queue'},
+    'design.interface.init_job': {'queue': 'design_queue'},
+    'design.interface.export_excel': {'queue': 'design_queue'},
+    'design.interface.primer_specificity_background': {'queue': 'specificity_queue'},
+    'design.interface.spacer_specificity_background': {'queue': 'specificity_queue'},
+}
 
 DESIGN_CONF = conf['CONF']

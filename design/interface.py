@@ -10,7 +10,7 @@ import typing
 import uuid
 
 from Bio import Entrez
-from celery import shared_task
+import celery
 from celery.exceptions import SoftTimeLimitExceeded
 import django
 from djangorestframework_camel_case.util import camelize, underscoreize
@@ -53,9 +53,11 @@ Entrez.email = django.conf.settings.DESIGN_ENTREZ_EMAIL
 class JobStatus(enum.Enum):
     QUEUED = 'Queued'
     FINDING_PEGRNAS = 'Finding pegRNAs'
-    QUEUED_SPECIFITY = 'Queued for specificity checks'
+    QUEUED_PRIMER_SPECIFITY = 'Queued for primer specificity'
     CHECKING_PRIMER_SPECIFICITY = 'Checking primer specificity'
+    QUEUED_SGRNA_SPECIFITY = 'Queued for sgRNA specificity'
     CHECKING_SGRNA_SPECIFICITY = 'Checking sgRNA specificity'
+    EXPORTING_EXCEL = 'Exporting Excel file'
     COMPLETED_STATUS = 'Completed'
     FAILED_STATUS = 'Failed'
 
@@ -83,6 +85,8 @@ class Job:
     warning: typing.Optional[str] = dataclasses.field(default=None)
     jobdir: str = dataclasses.field(default=None, init=False)
     output_folder: dataclasses.InitVar(typing.Optional[str]) = None
+    run_bowtie: bool = True
+    excel_exported: bool = False
 
     def __post_init__(self, output_folder: typing.Optional[str]) -> None:
         options = django.conf.settings.DESIGN_CONF['default_options'].copy()
@@ -114,15 +118,12 @@ class Job:
         with open(os.path.join(self.jobdir, f'edit{edit_index}.json'), 'w') as f:
             json.dump(camelize(result), f, indent=4)
 
-    def save(self, as_json=True, as_excel=True) -> None:
+    def save(self) -> None:
         os.makedirs(os.path.join(self.jobdir, 'excel_tmp'), exist_ok=True)
-        if as_json:
-            with open(os.path.join(self.jobdir, 'summary.json'), 'w') as f:
-                d = camelize(JobSerializer(self).data)
-                del d['organism']['scaffolds']
-                json.dump(d, f, indent=4)
-        if as_excel:
-            self.export_excel()
+        with open(os.path.join(self.jobdir, 'summary.json'), 'w') as f:
+            d = camelize(JobSerializer(self).data)
+            del d['organism']['scaffolds']
+            json.dump(d, f, indent=4)
 
     @classmethod
     def load_from_disk(cls, job_id: str) -> Job:
@@ -321,7 +322,9 @@ class Job:
         pd.DataFrame(summary_primers).to_excel(writer, 'Summary', index=False, startrow=start_row)
         writer.save()
 
-    def _design_edit(self, i):
+        self.excel_exported = True
+
+    def design_edit(self, i):
         edit = self.edits[i]
         sequence_type = edit['sequence_type']
         sequence = edit['sequence']
@@ -357,16 +360,80 @@ class Job:
 
         finally:
             self.save_result(result, i)
-            self.summary.append({
+            return {
                 'sequence': result['sequence'],
                 'sequence_type': sequence_type,
                 'edit': edit.__class__.__name__,
                 'options': options,
                 'pegRNAs': len(result['pegRNAs']),
                 'warning': result['warning']
-            })
+            }
 
-            return result
+    def primer_specificity_check(self):
+        all_primers = itertools.chain.from_iterable((result['primers'] for result in self.results))
+        all_primers = check_primer_specificity(all_primers, self.organism.assembly, os.path.join(
+            django.conf.settings.DESIGN_OUTPUT_FOLDER,
+            self.job_id), **self.options)
+
+        prevpair = 0
+        count = 0
+        result_index = 0
+        results = self.results
+        result = next(results)
+        while len(result['primers']) == 0:
+            result = next(results)
+            result_index += 1
+        try:
+            result['primers'][count]['products'] = set()
+        except IndexError:
+            pass
+        for pair, product in all_primers:
+            if prevpair != pair:
+                result['primers'][count]['product_count'] = len(result['primers'][count]['products'])
+                count += 1
+                try:
+                    result['primers'][count]['products'] = set()
+                except IndexError:
+                    try:
+                        result['primers'] = sorted(result['primers'], key=lambda x: x['product_count'])
+                        self.save_result(result, result_index)
+                        result = next(results)
+                        result_index += 1
+                        while len(result['primers']) == 0:
+                            result = next(results)
+                            result_index += 1
+                        count = 0
+                        result['primers'][count]['products'] = set()
+                    except StopIteration:
+                        break
+
+            result['primers'][count]['products'].add(product)
+        self.save_result(result, result_index)
+
+    def sgrna_specificity_check(self):
+        spacers = defaultdict(lambda: dict())
+        for result in self.results:
+            for pegRNA in result['pegRNAs']:
+                spacers[pegRNA['nuclease']][pegRNA['spacer']] = 1
+                for nicking in pegRNA['nicking']:
+                    spacers[pegRNA['nuclease']][nicking['spacer']] = 1
+
+        for nuclease in spacers:
+            spacers[nuclease] = list(spacers[nuclease].keys())
+            counts, binders = NUCLEASES[nuclease].find_off_targets(spacers[nuclease],
+                                                                   self.organism.assembly,
+                                                                   os.path.join(
+                                                                       django.conf.settings.DESIGN_OUTPUT_FOLDER,
+                                                                       self.job_id))
+            for i, result in enumerate(self.results):
+                for j, hits in enumerate(zip(counts, binders)):
+                    for pegRNA in result['pegRNAs']:
+                        if pegRNA['nuclease'] == nuclease and pegRNA['spacer'] == spacers[nuclease][j]:
+                            pegRNA['offtargets'] = hits
+                        for nicking in pegRNA['nicking']:
+                            if pegRNA['nuclease'] == nuclease and nicking['spacer'] == spacers[nuclease][j]:
+                                nicking['offtargets'] = hits
+                self.save_result(result, i)
 
     def create_oligos(self):
         """Design pegRNAs for job edits. Saves to jobdir folder"""
@@ -374,80 +441,23 @@ class Job:
             self.status = JobStatus.FINDING_PEGRNAS
             self.warning = None
             self.summary = []
-            self.save(as_excel=False)
+            self.save()
             for i in range(len(self.edits)):
-                self._design_edit(i)
-                self.save(as_excel=False)
+                self.summary.append(self.design_edit(i))
+                self.save()
 
-            self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
+            if self.run_bowtie:
+                self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
+                self.save()
+                self.primer_specificity_check()
+
+                self.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
+                self.save()
+                self.sgrna_specificity_check()
+
+            self.status = JobStatus.EXPORTING_EXCEL
             self.save()
-
-            all_primers = itertools.chain.from_iterable((result['primers'] for result in self.results))
-            all_primers = check_primer_specificity(all_primers, self.organism.assembly, os.path.join(
-                                                                           django.conf.settings.DESIGN_OUTPUT_FOLDER,
-                                                                           self.job_id), **self.options)
-
-            prevpair = 0
-            count = 0
-            result_index = 0
-            results = self.results
-            result = next(results)
-            while len(result['primers']) == 0:
-                result = next(results)
-                result_index += 1
-            try:
-                result['primers'][count]['products'] = set()
-            except IndexError:
-                pass
-            for pair, product in all_primers:
-                if prevpair != pair:
-                    result['primers'][count]['product_count'] = len(result['primers'][count]['products'])
-                    count += 1
-                    try:
-                        result['primers'][count]['products'] = set()
-                    except IndexError:
-                        try:
-                            result['primers'] = sorted(result['primers'], key=lambda x: x['product_count'])
-                            self.save_result(result, result_index)
-                            result = next(results)
-                            result_index += 1
-                            while len(result['primers']) == 0:
-                                result = next(results)
-                                result_index += 1
-                            count = 0
-                            result['primers'][count]['products'] = set()
-                        except StopIteration:
-                            break
-
-                result['primers'][count]['products'].add(product)
-            self.save_result(result, result_index)
-            self.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
-            self.save()
-
-            spacers = defaultdict(lambda: dict())
-            for result in self.results:
-                for pegRNA in result['pegRNAs']:
-                    spacers[pegRNA['nuclease']][pegRNA['spacer']] = 1
-                    for nicking in pegRNA['nicking']:
-                        spacers[pegRNA['nuclease']][nicking['spacer']] = 1
-
-            for nuclease in spacers:
-                spacers[nuclease] = list(spacers[nuclease].keys())
-                counts, binders = NUCLEASES[nuclease].find_off_targets(spacers[nuclease],
-                                                                       self.organism.assembly,
-                                                                       os.path.join(
-                                                                           django.conf.settings.DESIGN_OUTPUT_FOLDER,
-                                                                           self.job_id))
-                for i, result in enumerate(self.results):
-                    for j, hits in enumerate(zip(counts, binders)):
-                        for pegRNA in result['pegRNAs']:
-                            if pegRNA['nuclease'] == nuclease and pegRNA['spacer'] == spacers[nuclease][j]:
-                                pegRNA['offtargets'] = hits
-                            for nicking in pegRNA['nicking']:
-                                if pegRNA['nuclease'] == nuclease and nicking['spacer'] == spacers[nuclease][j]:
-                                    nicking['offtargets'] = hits
-                    self.save_result(result, i)
-
+            self.export_excel()
             self.status = JobStatus.COMPLETED_STATUS
             self.save()
         except Exception as e:
@@ -468,6 +478,8 @@ class JobSerializer(serializers.Serializer):
     options = serializers.DictField(child=serializers.IntegerField())
     nuclease = serializers.CharField(required=False)
     warning = serializers.CharField()
+    run_bowtie = serializers.BooleanField()
+    excel_exported = serializers.BooleanField()
 
 
 class SequenceObjectSerializer(serializers.Serializer):
@@ -486,7 +498,7 @@ class SequenceObjectSerializer(serializers.Serializer):
             return None
 
 
-@shared_task()
+@celery.shared_task()
 def create_oligos_background(job_id: str) -> None:
     """Used by celery to run create_oligos in background."""
     job = Job.load_from_disk(job_id)
@@ -494,5 +506,99 @@ def create_oligos_background(job_id: str) -> None:
 
     if isinstance(e, Exception):
         job.status = JobStatus.FAILED_STATUS
-        job.save(as_excel=False)
+        job.save()
         raise e
+
+
+@celery.shared_task()
+def design_edit_background(indices: list, job_id: str):
+    job = Job.load_from_disk(job_id)
+    results = []
+    for edit_index in indices:
+        results.append(job.design_edit(edit_index))
+    return results
+
+
+@celery.shared_task()
+def update_summary(results: list, job_id: str):
+    if type(results[0]) == list:
+        results = list(itertools.chain.from_iterable(results))
+    job = Job.load_from_disk(job_id)
+    job.summary.extend(results)
+    job.save()
+
+
+@celery.shared_task()
+def queue_primer_specificity(job_id: str):
+    job = Job.load_from_disk(job_id)
+    job.status = JobStatus.QUEUED_PRIMER_SPECIFITY
+    job.save()
+
+
+@celery.shared_task()
+def primer_specificity_background(job_id: str):
+    job = Job.load_from_disk(job_id)
+    job.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
+    job.save()
+    job.primer_specificity_check()
+    job.save()
+
+    return job_id
+
+
+@celery.shared_task()
+def queue_spacer_specificity(job_id: str):
+    job = Job.load_from_disk(job_id)
+    job.status = JobStatus.QUEUED_SGRNA_SPECIFITY
+    job.save()
+
+
+@celery.shared_task()
+def spacer_specificity_background(job_id: str):
+    job = Job.load_from_disk(job_id)
+    job.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
+    job.save()
+    job.sgrna_specificity_check()
+    job.save()
+
+    return job_id
+
+
+@celery.shared_task()
+def init_job(job_id: str):
+    job = Job.load_from_disk(job_id)
+    job.warning = None
+    job.summary = []
+    job.status = JobStatus.FINDING_PEGRNAS
+    job.save()
+
+
+@celery.shared_task()
+def export_excel(job_id: str):
+    job = Job.load_from_disk(job_id)
+    job.status = JobStatus.EXPORTING_EXCEL
+    job.save()
+    job.export_excel()
+    job.status = JobStatus.COMPLETED_STATUS
+    job.save()
+
+
+def create_oligos_chain(job_id: str):
+    job = Job.load_from_disk(job_id)
+    job.status = JobStatus.QUEUED
+    job.save()
+
+    indices = list(range(len(job.edits)))
+    n = 1
+    indices = [indices[i * n:(i + 1) * n] for i in range((len(indices) + n - 1) // n )]
+    edits = [(i, job_id) for i in indices]
+
+    results = init_job.si(job_id)
+    results = results | celery.group([design_edit_background.si(*e) for e in edits]) | update_summary.s(job_id)
+    if job.run_bowtie:
+        results = results | queue_primer_specificity.si(job_id)
+        results = results | primer_specificity_background.si(job_id)
+        results = results | queue_spacer_specificity.si(job_id)
+        results = results | spacer_specificity_background.si(job_id)
+    results = results | export_excel.si(job_id)
+    return results.delay()

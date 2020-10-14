@@ -16,7 +16,7 @@ from design import EDITS, NUCLEASES
 from design.serializers import EditSerializer, GeneSerializer, GeneListSerializer, NucleaseSerializer,\
     OrganismSerializer, TranscriptSerializer
 from design.models import Organism, Gene, Transcript
-from design.interface import Job, JobSerializer, create_oligos_background
+from design.interface import Job, JobSerializer, create_oligos_chain
 
 Entrez.email = django.conf.settings.DESIGN_ENTREZ_EMAIL
 
@@ -162,9 +162,9 @@ class JobViewSet(viewsets.ViewSet):
         nuclease = request.data.get('nuclease', None)
         organism = Organism.objects.get(pk=pk)
         j = Job(organism, options=advanced_options, edits=edits, nuclease=nuclease)
-        j.save(as_excel=False)
+        j.save()
 
-        create_oligos_background.delay(j.job_id)
+        create_oligos_chain(j.job_id)
 
         return Response(JobSerializer(j).data, status=status.HTTP_201_CREATED)
 
@@ -177,9 +177,9 @@ class JobViewSet(viewsets.ViewSet):
         nuclease = request.data.get('nuclease', None)
         j = Job(organism, options=advanced_options, nuclease=nuclease)
         j.edits = j.clinvar2edit(edits)
-        j.save(as_excel=False)
+        j.save()
 
-        create_oligos_background.delay(j.job_id)
+        create_oligos_chain(j.job_id)
 
         return Response(JobSerializer(j).data, status=status.HTTP_201_CREATED)
 
