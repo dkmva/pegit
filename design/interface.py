@@ -589,7 +589,7 @@ def create_oligos_chain(job_id: str):
     job.save()
 
     indices = list(range(len(job.edits)))
-    n = 1
+    n = 10
     indices = [indices[i * n:(i + 1) * n] for i in range((len(indices) + n - 1) // n )]
     edits = [(i, job_id) for i in indices]
 
