@@ -311,6 +311,7 @@ class Job:
             summary_dict.update(pegRNAs[0])
             del summary_dict["#pegRNA"]
             summary_pegrnas.append(summary_dict)
+            ws._opt_close()
 
         start_row = 8
         ws = wb.get_worksheet_by_name('Summary')

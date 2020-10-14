@@ -147,7 +147,7 @@ class JobViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['GET'])
     def queue_position(self, request, pk, *args, **kwargs):
         with celery_app.pool.acquire(block=True) as conn:
-            tasks = conn.default_channel.client.lrange('celery', 0, -1)
+            tasks = conn.default_channel.client.lrange('design_queue', 0, -1)
         pks = [json.loads(base64.b64decode(json.loads(t)['body']))[0][0] for t in tasks][::-1]
 
         try:
