@@ -347,7 +347,7 @@ class Cas9(Nuclease, abc.ABC):
         # Create all possible RT templates within range limits that do not end with a 'G'.
         lengths = []
         for rt_template_length in range(rt_min_length, rt_max_length + 1):
-            template = reference[:cut_dist + rt_template_length + alteration_length]
+            template = reference[:cut_dist + rt_template_length + nucleotide_difference]
             lengths.append(template)
         return rt_template, lengths
 
@@ -416,8 +416,7 @@ class SpCas9Base(Cas9, abc.ABC):
         # Increase reverse transcription template until it doesn't end with a 'G'
         # For large alterations, longer template is probably preferred
 
-        while (rt_template.endswith(
-                'G') or rt_template_length <= alteration_length * 2) and rt_template_length <= rt_max_length:
+        while (rt_template.endswith('G') or rt_template_length <= alteration_length * 2) and rt_template_length <= rt_max_length:
             rt_template += reference[to_position]
             if not rt_template.endswith('G'):
                 last_valid = rt_template
@@ -430,7 +429,7 @@ class SpCas9Base(Cas9, abc.ABC):
         # Create all possible RT templates within range limits that do not end with a 'G'.
         lengths = []
         for rt_template_length in range(rt_min_length, rt_max_length + 1):
-            template = reference[:cut_dist + rt_template_length + alteration_length]
+            template = reference[:cut_dist + rt_template_length + nucleotide_difference]
             if not template.endswith('G'):
                 lengths.append(template)
         return rt_template, lengths
