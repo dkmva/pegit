@@ -155,6 +155,20 @@ class JobViewSet(viewsets.ViewSet):
         except ValueError:
             return Response({'position': ''})
 
+    @action(detail=True, methods=['GET'])
+    def design_progress(self, request, pk, *args, **kwargs):
+        with celery_app.pool.acquire(block=True) as conn:
+            tasks = conn.default_channel.client.lrange('design_queue', 0, -1)
+            j = Job.load_from_disk(pk)
+            length = len(j.edits) // 1
+            count = [eval(json.loads(t)['headers']['argsrepr'])[1] for t in tasks].count(pk)
+            if len(j.edits) % 1:
+                length += 1
+        try:
+            return Response({'percent': (length - count) / length * 100})
+        except ValueError:
+            return Response({'percent': 100})
+
     def create(self, request, *args, **kwargs):
         pk = request.data.get('organism', None)
         edits = request.data.get('edits', None)
