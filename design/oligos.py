@@ -637,7 +637,7 @@ class AlterationTracker:
         nicking_offset = visual_nicking.find(visual_sequence)
 
         primers = []
-        if design_primers:
+        if design_primers and oligo_sets[0].cloning_strategy.can_design_primers:
             primers = self.make_primers(**options)
 
         return {
@@ -697,7 +697,7 @@ class AlterationTracker:
 
     def make_primers(self, product_min_size, product_max_size, primer_min_length, primer_max_length, primer_opt_length,
                      primer_min_tm, primer_max_tm, primer_opt_tm, **options):
-        """Design sequencing primers to verfiy edit."""
+        """Design sequencing primers to verfy edit."""
         alterations = self.alterations
         start = sum(alterations[0])
         target = str(self)
