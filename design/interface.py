@@ -636,7 +636,7 @@ def create_oligos_chain(job_id: str):
     results = results | celery.group([design_edit_background.si(*e) for e in edits]) | update_summary.s(job_id)
     results = results | post_process_job_background.si(job_id)
     if job.run_bowtie and len(job.edits) <= django.conf.settings.DESIGN_MAX_EDITS_BOWTIE:
-        if job.design_primers:
+        if job.design_primers and NUCLEASES[job.nuclease].cloning_strategies[job.cloning_strategy].can_design_primers:
             results = results | queue_primer_specificity.si(job_id)
             results = results | primer_specificity_background.si(job_id)
         results = results | queue_spacer_specificity.si(job_id)
