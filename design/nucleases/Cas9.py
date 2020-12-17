@@ -12,10 +12,46 @@ import CFD
 
 from ..helpers import reverse_complement, gc, extract_sequences, run_bowtie_multi, complement, dgn_to_regex
 from . import Nuclease, OligoDict
+from .cloning.Cas9 import GGAssembly, LibraryCloning
 
 
 class Cas9(Nuclease, abc.ABC):
     """Base Cas9 class. Can be subclassed for specific Cas9 variants."""
+
+    cloning_strategies = {
+        'pegRNA-GG-acceptor': GGAssembly,
+        'Library': LibraryCloning,
+    }
+
+    @classmethod
+    def do_cloning(cls, strategy=None, scaffold=None, **options):
+        if strategy is None:
+            strategy = next(iter(cls.cloning_strategies.values()))
+        if isinstance(strategy, str):
+            strategy = cls.cloning_strategies[strategy]
+        scaffold = cls._scaffold_name_to_sequence(scaffold)
+        return strategy.design_cloning(scaffold=scaffold, **options)
+
+    @classmethod
+    def do_alternate_cloning(cls, strategy=None, scaffold=None, **options):
+        if strategy is None:
+            strategy = next(iter(cls.cloning_strategies.values()))
+        if isinstance(strategy, str):
+            strategy = cls.cloning_strategies[strategy]
+        scaffold = cls._scaffold_name_to_sequence(scaffold)
+        return strategy.alternate_extension(scaffold=scaffold, **options)
+
+    @classmethod
+    def filter_extension(cls, seq):
+        return False
+    
+    @classmethod
+    def _filter_extension(cls, seq, strategy):
+        if isinstance(strategy, str):
+            strategy = cls.cloning_strategies[strategy]
+        if strategy.allow_extension_filtering:
+            return cls.filter_extension(seq)
+        return False
 
     @classproperty
     def _cut_site_position(cls):
@@ -307,7 +343,7 @@ class Cas9(Nuclease, abc.ABC):
         return sorted(spacers, key=lambda x: (x['wt_score'], not (abs(x['position']) > 50), -x['score']))
 
     @classmethod
-    def _make_pbs_sequence(cls, reference, pbs_min_length, pbs_max_length, **options):
+    def _make_pbs_sequence(cls, reference, pbs_min_length, pbs_max_length, strategy, **options):
         """Find a suggested PBS length, and generate all possible PBS candidate lengths.
 
         Selects the shortest PBS sequence with a GC content in the range [0.4,0.6].
@@ -330,30 +366,32 @@ class Cas9(Nuclease, abc.ABC):
 
     @classmethod
     def _make_rt_sequence(cls, reference, cut_dist, nucleotide_difference, alteration_length, rt_min_length,
-                          rt_max_length, **options):
+                          rt_max_length, strategy, **options):
         """Find a suggested RT template length, and generate alterniative RT tempalte lengths."""
         rt_template_length = rt_min_length
         to_position = cut_dist + rt_template_length + nucleotide_difference
         rt_template = reference[:to_position]
-        # Extension sequence should not start with a 'C'
-        # Increase reverse transcription template until it doesn't end with a 'G'
+        last_valid = rt_template
         # For large alterations, longer template is probably preferred
-
-        while rt_template_length <= alteration_length * 2 and rt_template_length <= rt_max_length:
+        while (cls._filter_extension(rt_template, strategy) or rt_template_length <= alteration_length * 2) and rt_template_length <= rt_max_length:
             rt_template += reference[to_position]
+            if not cls._filter_extension(rt_template, strategy):
+                last_valid = rt_template
             to_position += 1
             rt_template_length += 1
-
-        # Create all possible RT templates within range limits that do not end with a 'G'.
+        
+        rt_template = last_valid
+        # Create all possible RT templates within range limits.
         lengths = []
         for rt_template_length in range(rt_min_length, rt_max_length + 1):
             template = reference[:cut_dist + rt_template_length + nucleotide_difference]
-            lengths.append(template)
+            if not cls._filter_extension(template, strategy):
+                lengths.append(template)
         return rt_template, lengths
 
     @classmethod
     def make_extension_sequence(cls, reference_sequence, altered_sequence, spacer_strand, spacer_cut_site, cut_dist,
-                                alteration_length, pbs_min_length, pbs_max_length, rt_min_length, rt_max_length,
+                                alteration_length, pbs_min_length, pbs_max_length, rt_min_length, rt_max_length, strategy,
                                 **options):
         """Create the pegRNA extension sequence.
 
@@ -369,9 +407,9 @@ class Cas9(Nuclease, abc.ABC):
         else:
             pbs_reference = reverse_complement(reference_sequence[spacer_cut_site:])
             rt_reference = reverse_complement(altered_sequence[:spacer_cut_site + nucleotide_difference])
-        pbs, pbs_lengths = cls._make_pbs_sequence(pbs_reference.upper(), pbs_min_length, pbs_max_length)
+        pbs, pbs_lengths = cls._make_pbs_sequence(pbs_reference.upper(), pbs_min_length, pbs_max_length, strategy, **options)
         rt, rt_lengths = cls._make_rt_sequence(rt_reference, cut_dist, nucleotide_difference, alteration_length,
-                                               rt_min_length, rt_max_length)
+                                               rt_min_length, rt_max_length, strategy, **options)
 
         pbs_length = len(pbs)
         rt_length = len(rt)
@@ -405,34 +443,8 @@ class SpCas9Base(Cas9, abc.ABC):
     spacer_length = 20
 
     @classmethod
-    def _make_rt_sequence(cls, reference, cut_dist, nucleotide_difference, alteration_length, rt_min_length,
-                          rt_max_length, **options):
-        """Find a suggested RT template length, and generate alterniative RT tempalte lengths."""
-        rt_template_length = rt_min_length
-        to_position = cut_dist + rt_template_length + nucleotide_difference
-        rt_template = reference[:to_position]
-        last_valid = rt_template
-        # Extension sequence should not start with a 'C'
-        # Increase reverse transcription template until it doesn't end with a 'G'
-        # For large alterations, longer template is probably preferred
-
-        while (rt_template.endswith('G') or rt_template_length <= alteration_length * 2) and rt_template_length <= rt_max_length:
-            rt_template += reference[to_position]
-            if not rt_template.endswith('G'):
-                last_valid = rt_template
-            to_position += 1
-            rt_template_length += 1
-
-        # If canceled by cutoff, might end with G .. Take the last valid length.
-        rt_template = last_valid
-
-        # Create all possible RT templates within range limits that do not end with a 'G'.
-        lengths = []
-        for rt_template_length in range(rt_min_length, rt_max_length + 1):
-            template = reference[:cut_dist + rt_template_length + nucleotide_difference]
-            if not template.endswith('G'):
-                lengths.append(template)
-        return rt_template, lengths
+    def filter_extension(cls, seq):
+        return seq.endswith('G')
 
 
 class SpCas9(SpCas9Base):

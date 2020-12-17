@@ -22,7 +22,8 @@ def auto_import(module_list, base_class, container):
 
 auto_import(settings.DESIGN_CONF['edits'], AbstractEdit, EDITS)
 auto_import(settings.DESIGN_CONF['nucleases'], Nuclease, NUCLEASES)
-NUCLEASES = dict({settings.DESIGN_CONF['default_nuclease']: NUCLEASES[settings.DESIGN_CONF['default_nuclease']]},  **{k:v for (k,v) in NUCLEASES.items()})
+NUCLEASES = dict({settings.DESIGN_CONF['default_nuclease']: NUCLEASES[settings.DESIGN_CONF['default_nuclease']]},
+                 **{k: v for (k, v) in NUCLEASES.items()})
 
 
 try:

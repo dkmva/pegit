@@ -160,9 +160,9 @@ class JobViewSet(viewsets.ViewSet):
         with celery_app.pool.acquire(block=True) as conn:
             tasks = conn.default_channel.client.lrange('design_queue', 0, -1)
             j = Job.load_from_disk(pk)
-            length = len(j.edits) // 1
+            length = len(j.edits) // 10
             count = [eval(json.loads(t)['headers']['argsrepr'])[1] for t in tasks].count(pk)
-            if len(j.edits) % 1:
+            if len(j.edits) % 10:
                 length += 1
         try:
             return Response({'percent': (length - count) / length * 100})
@@ -174,8 +174,12 @@ class JobViewSet(viewsets.ViewSet):
         edits = request.data.get('edits', None)
         advanced_options = request.data.get('advanced_options', None)
         nuclease = request.data.get('nuclease', None)
+        cloning_strategy = request.data.get('cloning_strategy', None)
+        run_bowtie = request.data.get('run_bowtie', True)
+        design_primers = request.data.get('design_primers', True)
         organism = Organism.objects.get(pk=pk)
-        j = Job(organism, options=advanced_options, edits=edits, nuclease=nuclease)
+        j = Job(organism, options=advanced_options, edits=edits, nuclease=nuclease, cloning_strategy=cloning_strategy,
+                run_bowtie=run_bowtie, design_primers=design_primers)
         j.save()
 
         create_oligos_chain(j.job_id)
@@ -189,7 +193,8 @@ class JobViewSet(viewsets.ViewSet):
         organism = Organism.objects.get(assembly=django.conf.settings.DESIGN_CLINVAR_ORGANISM)
         advanced_options = request.data.get('advanced_options', None)
         nuclease = request.data.get('nuclease', None)
-        j = Job(organism, options=advanced_options, nuclease=nuclease)
+        cloning_strategy = request.data.get('cloning_strategy', None)
+        j = Job(organism, options=advanced_options, nuclease=nuclease, cloning_strategy=cloning_strategy)
         j.edits = j.clinvar2edit(edits)
         j.save()
 
@@ -207,7 +212,6 @@ class ClinvarSearch(viewsets.ViewSet):
                 ids = Entrez.read(handle)['IdList']
             with Entrez.esummary(db="clinvar", id=','.join(ids), retmode='xml') as handle:
                 records = Entrez.read(handle)['DocumentSummarySet']['DocumentSummary']
-
             return Response({'results': records})
         return Response({'results': []})
 

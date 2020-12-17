@@ -106,7 +106,7 @@ class Nuclease(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def _make_pbs_sequence(cls, reference: str, pbs_min_length: int, pbs_max_length: int,
+    def _make_pbs_sequence(cls, reference: str, pbs_min_length: int, pbs_max_length: int, strategy,
                            **options) -> typing.Tuple[str, typing.List]:
         """
         Method to find PBS sequence for a pegRNA spacer.
@@ -115,7 +115,8 @@ class Nuclease(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def _make_rt_sequence(cls, reference, cut_dist, nucleotide_difference, alteration_length, rt_min_length, rt_max_length, **options) -> typing.Tuple[str, typing.List]:
+    def _make_rt_sequence(cls, reference, cut_dist, nucleotide_difference, alteration_length, rt_min_length,
+                          rt_max_length, strategy, **options) -> typing.Tuple[str, typing.List]:
         """
         Method to find RT template sequence for a pegRNA spacer.
         Should return optimal sequence and a list of alternatives

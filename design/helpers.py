@@ -311,7 +311,7 @@ def check_primer_specificity(primers, assembly, write_folder, **options):
         minus_start = int(minus_start)
         pair = int(plus_primer.split('/')[0]) // 3
         product = (plus_chr, plus_seq, minus_seq, plus_start,
-                                            minus_start + len(minus_seq),
-                                            minus_start + len(minus_seq) - plus_start)
+                   minus_start + len(minus_seq),
+                   minus_start + len(minus_seq) - plus_start)
 
         yield pair, product

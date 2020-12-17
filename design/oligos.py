@@ -3,6 +3,7 @@ Module for designing cloning oligos.
 """
 from collections import defaultdict
 import copy
+import functools
 import regex
 
 import django
@@ -15,14 +16,15 @@ from design.nucleases import NUCLEASES
 class OligoSet:
     """Set of oligos for cloning pegRNAs."""
 
-    def __init__(self, tracker, spacer, scaffold=None, nuclease=None, repair=False):
+    def __init__(self, tracker, spacer, scaffold=None, nuclease=None, repair=False, cloning_strategy=None):
         if nuclease is None:
             nuclease = django.conf.settings.DESIGN_CONF['default_nuclease']
         if isinstance(nuclease, str):
             nuclease = NUCLEASES[nuclease]
         if scaffold is None:
             self.scaffold = nuclease.default_scaffold
-
+        if cloning_strategy is None:
+            cloning_strategy = next(iter(nuclease.cloning_strategies))
         self.spacer_sequence = spacer['spacer']
         self.spacer_position = spacer['position']
         self.spacer_cut_site = spacer['cut_site']
@@ -33,14 +35,15 @@ class OligoSet:
         self.spacer_score = spacer['score']
         self.visual_spacer = spacer['visual_spacer']
         self.pam_silenced = False
-        self.nuclease = nuclease
+        self.nuclease = nuclease()
         self.tracker = tracker
         self.pbs_length = None
         self.rt_template_length = None
         self.oligos = {}
-        self.nicking_spacers = {}
-        self.alternate_extension = []
+        self.nicking_spacers = []
+        self.alternate_extensions = []
         self.repair = repair
+        self.cloning_strategy = self.nuclease.cloning_strategies[cloning_strategy]
 
     @property
     def info(self):
@@ -52,7 +55,7 @@ class OligoSet:
             'pam_silenced': self.pam_silenced,
             'distance': self.spacer_distance,
             'strand': self.spacer_strand,
-            'nuclease': self.nuclease.__name__,
+            'nuclease': self.nuclease.__class__.__name__,
             'pbs_length': self.pbs_length,
             'rt_template_length': self.rt_template_length,
             'oligos': self.oligos,
@@ -60,7 +63,7 @@ class OligoSet:
             'visual_extension': self.visual_exension,
             'visual_spacer': self.visual_spacer,
             'nicking': self.nicking_spacers,
-            'alternate_extensions': self.alternate_extension,
+            'alternate_extensions': self.alternate_extensions,
             'pbs': self.pbs,
             'rt_template': self.rt_template,
         }
@@ -89,55 +92,83 @@ class OligoSet:
 
         reference_sequence = self.tracker.original_sequence
         altered_sequence = str(self.tracker)
-        self.oligos['spacer'] = self.nuclease.make_spacer_oligos(self.spacer_sequence, self.scaffold)
-        self.oligos['scaffold'] = self.nuclease.make_scaffold_oligos(self.scaffold)
         self._make_extension_sequence(**options)
-        self.oligos['extension'] = self.nuclease.make_extension_oligos(self.extension, self.scaffold)
-        for extension in self.alternate_extension:
-            extension['oligos'] = self.nuclease.make_extension_oligos(extension['sequence'], self.scaffold)
+
+        upstream = reference_sequence[:self.spacer_cut_site]
+        downstream = reference_sequence[self.spacer_cut_site:]
+
+        alteration_position = sum(self.tracker.alterations[0])
+        if alteration_position >= self.spacer_cut_site:
+            cut_dist = alteration_position+self.tracker.alteration_length - self.spacer_cut_site
+        else:
+            cut_dist = self.spacer_cut_site - alteration_position
+
+        if self.spacer_strand == -1:
+            upstream, downstream = reverse_complement(downstream), reverse_complement(upstream)
+        self.oligos = self.nuclease.do_cloning(strategy=self.cloning_strategy,
+                                               spacer_sequence=self.spacer_sequence,
+                                               scaffold=self.scaffold,
+                                               extension_sequence=self.extension,
+                                               upstream=upstream,
+                                               downstream=downstream,
+                                               cut_dist=cut_dist,
+                                               **options)
+        #self.oligos['spacer'] = self.nuclease.make_spacer_oligos(self.spacer_sequence, self.scaffold)
+        #self.oligos['scaffold'] = self.nuclease.make_scaffold_oligos(self.scaffold)
+        #self.oligos['extension'] = self.nuclease.make_extension_oligos(self.extension, self.scaffold)
+        for extension in self.alternate_extensions:
+            extension['oligos'] = self.nuclease.do_alternate_cloning(strategy=self.cloning_strategy,
+                                                                     spacer_sequence=self.spacer_sequence,
+                                                                     scaffold=self.scaffold,
+                                                                     extension_sequence=extension['sequence'],
+                                                                     upstream=upstream,
+                                                                     downstream=downstream,
+                                                                     cut_dist=cut_dist,
+                                                                     **options)
 
         if self.repair:
             reference_sequence, altered_sequence = altered_sequence, reference_sequence
-        spacers = self.nuclease.find_nicking_spacers(
-            reference_sequence,
-            altered_sequence,
-            self.spacer_strand,
-            self.spacer_cut_site,
-            self.scaffold, **options)
+        if self.cloning_strategy.can_design_nicking:
+            spacers = self.nuclease.find_nicking_spacers(
+                reference_sequence,
+                altered_sequence,
+                self.spacer_strand,
+                self.spacer_cut_site,
+                self.scaffold, **options)
 
-        for spacer in spacers:
+            for spacer in spacers:
 
-            visual_spacer = spacer['spacer']
-            position = spacer['position']
-            if self.spacer_strand == 1:
-                visual_spacer = reverse_complement(visual_spacer)
+                visual_spacer = spacer['spacer']
+                position = spacer['position']
+                if self.spacer_strand == 1:
+                    visual_spacer = reverse_complement(visual_spacer)
 
-            pos = self.spacer_cut_site
-            if self.spacer_strand == 1:
-                pos += position - len(spacer['spacer']) + spacer['offset']
-            else:
-                pos -= position + spacer['offset']
+                pos = self.spacer_cut_site
+                if self.spacer_strand == 1:
+                    pos += position - len(spacer['spacer']) + spacer['offset']
+                else:
+                    pos -= position + spacer['offset']
 
-            if self.repair:
-                visual_spacer = self.tracker.seq_from_original_coordinates(pos, pos + len(visual_spacer))
-                spacer['push'] = 0
-                if self.tracker.number_of_insertions:
-                    spacer['push'] = (pos - self.tracker.index[pos][0]) + (self.spacer_cut_site -
-                                self.tracker.index[self.spacer_cut_site][0])
-            else:
-                visual_spacer = self.tracker.seq_from_new_coordinates(pos, pos + len(visual_spacer))
-                spacer['push'] = 0
-                if self.tracker.number_of_deletions:
-                    spacer['push'] = (self.tracker.index[pos][0] - pos) + (self.tracker.index[self.spacer_cut_site][0] - self.spacer_cut_site)
-            if self.spacer_strand == 1:
-                spacer['push'] -= self.tracker.number_of_insertions + self.tracker.number_of_deletions
+                if self.repair:
+                    visual_spacer = self.tracker.seq_from_original_coordinates(pos, pos + len(visual_spacer))
+                    spacer['push'] = 0
+                    if self.tracker.number_of_insertions:
+                        spacer['push'] = (pos - self.tracker.index[pos][0]) + (self.spacer_cut_site -
+                                    self.tracker.index[self.spacer_cut_site][0])
+                else:
+                    visual_spacer = self.tracker.seq_from_new_coordinates(pos, pos + len(visual_spacer))
+                    spacer['push'] = 0
+                    if self.tracker.number_of_deletions:
+                        spacer['push'] = (self.tracker.index[pos][0] - pos) + (self.tracker.index[self.spacer_cut_site][0] - self.spacer_cut_site)
+                if self.spacer_strand == 1:
+                    spacer['push'] -= self.tracker.number_of_insertions + self.tracker.number_of_deletions
 
-            if self.spacer_strand == 1:
-                visual_spacer = reverse_complement(visual_spacer)
+                if self.spacer_strand == 1:
+                    visual_spacer = reverse_complement(visual_spacer)
 
-            spacer['visual_spacer'] = visual_spacer
+                spacer['visual_spacer'] = visual_spacer
 
-        self.nicking_spacers = spacers
+            self.nicking_spacers = spacers
         return self.oligos
 
     def _make_extension_sequence(self, **options):
@@ -148,7 +179,7 @@ class OligoSet:
 
         reference_sequence = self.tracker.original_sequence
         altered_sequence = str(self.tracker)
-        alteration_position = sum(self.tracker.alterations()[0])
+        alteration_position = sum(self.tracker.alterations[0])
         if alteration_position >= self.spacer_cut_site:
             cut_dist = alteration_position+self.tracker.alteration_length - self.spacer_cut_site
         else:
@@ -163,6 +194,7 @@ class OligoSet:
             self.spacer_cut_site,
             cut_dist,
             self.tracker.number_of_alterations,
+            strategy=self.cloning_strategy,
             **options)
 
         self.pbs_length = pbs_length
@@ -170,7 +202,7 @@ class OligoSet:
         self.extension = extension
         self.rt_template = extension[:rt_template_length]
         self.pbs = extension[rt_template_length:]
-        self.alternate_extension = alternate_extensions
+        self.alternate_extensions = alternate_extensions
         visual_extension = extension
 
         start = self.spacer_cut_site - self.pbs_length
@@ -397,6 +429,7 @@ class AlterationTracker:
     def alteration_string(self):
         return ''.join([alteration for alterations in self.alteration_list.values() for alteration in alterations])
 
+    @functools.cached_property
     def alterations(self):
         return [(i, j) for i in self.sequence_range
                 for j in range(len(self.sequence[i]))
@@ -506,7 +539,7 @@ class AlterationTracker:
     @property
     def alteration_length(self):
         """Length of the edited region"""
-        alterations = self.alterations()
+        alterations = self.alterations
 
         if not alterations:
             return 0
@@ -519,17 +552,17 @@ class AlterationTracker:
 
         return max(end-start, len(self.index[start:end + insertions - deletions]))
 
-    def make_oligos(self, repair, num_pegs, nuclease=None, silence_pam=False, **options):
+    def make_oligos(self, repair, num_pegs, nuclease=None, silence_pam=False, design_primers=False, cloning_strategy=None, **options):
         """Make oligos for all selected spacers"""
         if not self.number_of_alterations:
             raise Exception('No DNA changes found')
-        oligo_sets = self.find_best_spacers(num_pegs, repair, nuclease, **options)
+        oligo_sets = self.find_best_spacers(num_pegs, repair, nuclease, cloning_strategy, **options)
         degenerate_sequence = self.degenerate_sequence(strict=silence_pam == 'strict')
         for oligo_set in oligo_sets:
             oligo_set.make_oligos(degenerate_sequence, silence_pam, **options)
 
         # Visualisations for Detail view
-        alterations = self.alterations()
+        alterations = self.alterations
 
         # Visualisations for List view
         # TODO: FIX FOR CASES WITH ONLY SPACERS ON ONE STRAND !!!
@@ -603,10 +636,14 @@ class AlterationTracker:
 
         nicking_offset = visual_nicking.find(visual_sequence)
 
+        primers = []
+        if design_primers:
+            primers = self.make_primers(**options)
+
         return {
             'pegRNAs': sorted([oligo_set.info for oligo_set in oligo_sets],
                               key=lambda os: (-os['pam_disrupted'], -os['pam_silenced'], os['distance'])),
-            'primers': self.make_primers(**options),
+            'primers': primers,
             'visual_sequence': visual_sequence,
             'visual_nicking': visual_nicking,
             'nicking_offset': nicking_offset,
@@ -614,7 +651,7 @@ class AlterationTracker:
             'start': start,
         }
 
-    def find_best_spacers(self, num_pegs, repair=False, nuclease=None, **options):
+    def find_best_spacers(self, num_pegs, repair=False, nuclease=None, cloning_strategy=None, **options):
         """Find pegRNA spacers.
 
                 Required arguments:
@@ -627,7 +664,7 @@ class AlterationTracker:
         reference_sequence = self.original_sequence
         altered_sequence = self.__str__()
 
-        alterations = self.alterations()
+        alterations = self.alterations
         position = sum(alterations[0])
 
         if nuclease is None:
@@ -655,13 +692,13 @@ class AlterationTracker:
                 visual_spacer = reverse_complement(visual_spacer)
             spacers[i]['visual_spacer'] = visual_spacer
 
-        return [OligoSet(tracker=self, spacer=spacers[i], nuclease=nuclease, repair=repair)
+        return [OligoSet(tracker=self, spacer=spacers[i], nuclease=nuclease, repair=repair, cloning_strategy=cloning_strategy)
                 for i in range(n)]
 
     def make_primers(self, product_min_size, product_max_size, primer_min_length, primer_max_length, primer_opt_length,
                      primer_min_tm, primer_max_tm, primer_opt_tm, **options):
         """Design sequencing primers to verfiy edit."""
-        alterations = self.alterations()
+        alterations = self.alterations
         start = sum(alterations[0])
         target = str(self)
         target = target[max(0, start-product_max_size):min(start+self.alteration_length - self.number_of_deletions + product_max_size, len(target))]

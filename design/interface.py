@@ -78,6 +78,7 @@ class Job:
     options: dict = dataclasses.field(default_factory=dict)
     job_name: str = 'pegIT'
     nuclease: str = dataclasses.field(default=None)
+    cloning_strategy: str = 'Library'  # None
     status: JobStatus = JobStatus.QUEUED
     job_id: str = dataclasses.field(default_factory=make_uuid_string)
     edits: list = dataclasses.field(default_factory=list)
@@ -86,6 +87,7 @@ class Job:
     jobdir: str = dataclasses.field(default=None, init=False)
     output_folder: dataclasses.InitVar(typing.Optional[str]) = None
     run_bowtie: bool = True
+    design_primers: bool = True
     excel_exported: bool = False
 
     def __post_init__(self, output_folder: typing.Optional[str]) -> None:
@@ -95,6 +97,9 @@ class Job:
 
         if self.nuclease is None:
             self.nuclease = django.conf.settings.DESIGN_CONF['default_nuclease']
+
+        if self.cloning_strategy is None:
+            self.cloning_strategy = next(iter(NUCLEASES[self.nuclease].cloning_strategies))
 
         if output_folder is None:
             output_folder = django.conf.settings.DESIGN_OUTPUT_FOLDER
@@ -232,8 +237,9 @@ class Job:
         summary_primers = []
 
         pegRNA_header = ['#pegRNA', 'spacer', 'score', 'pam_disrupted', 'pam_silenced', 'distance', 'strand',
-                         'nuclease', 'pbs_length', 'rt_template_length', 'pbs', 'rt_template', 'offtargets',
-                         'spacer_oligo_top', 'spacer_oligo_bottom', 'extension_oligo_top', 'extension_oligo_bottom']
+                         'nuclease', 'pbs_length', 'rt_template_length', 'pbs', 'rt_template', 'offtargets'] + \
+                        NUCLEASES[self.nuclease].cloning_strategies[self.cloning_strategy].excel_oligo_headers
+
         # EDITS
         for i, result in enumerate(self.results, 1):
             wsname = f"{i} {self.edits[i-1]['sequence']} {self.edits[i-1]['edit']}"
@@ -251,38 +257,48 @@ class Job:
                 except KeyError:
                     p['offtargets'] = 'unknown'
                 oligos = p.pop('oligos')
-                p['spacer_oligo_top'] = oligos['spacer']['top']
-                p['spacer_oligo_bottom'] = oligos['spacer']['bottom']
-                p['extension_oligo_top'] = oligos['extension']['top']
-                p['extension_oligo_bottom'] = oligos['extension']['bottom']
+                for k in oligos:
+                    if isinstance(oligos[k], dict):
+                        for k2 in oligos[k]:
+                            p[f'{k}_oligo_{k2}'] = oligos[k][k2]
+                    else:
+                        p[f'{k}_oligo'] = oligos[k]
+                #p['spacer_oligo_top'] = oligos['spacer']['top']
+                #p['spacer_oligo_bottom'] = oligos['spacer']['bottom']
+                #p['extension_oligo_top'] = oligos['extension']['top']
+                #p['extension_oligo_bottom'] = oligos['extension']['bottom']
                 nicking = p.pop('nicking')
                 alternate_extensions = p.pop('alternate_extensions')
                 pegRNAs[j] = {k: p[k] for k in pegRNA_header}
-                try:
-                    pegRNAs[j]['nsgRNA_oligo_top'] = nicking[0]['top']
-                    pegRNAs[j]['nsgRNA_oligo_bottom'] = nicking[0]['bottom']
-                except IndexError:
-                    pegRNAs[j]['nsgRNA_oligo_top'] = ''
-                    pegRNAs[j]['nsgRNA_oligo_bottom'] = ''
-                for n in nicking:
-                    n['#pegRNA'] = j + 1
+                if NUCLEASES[self.nuclease].cloning_strategies[self.cloning_strategy].can_design_nicking:
                     try:
-                        n['offtargets'] = ','.join(str(e) for e in n['offtargets'][0])
-                    except KeyError:
-                        n['offtargets'] = 'unknown'
-                    n['oligo_top'] = n['top']
-                    n['oligo_bottom'] = n['bottom']
-                    n = {k: n[k] for k in ['#pegRNA', 'kind', 'position', 'spacer', 'score', 'wt_score', 'offtargets',
-                                             'oligo_top', 'oligo_bottom']}
-                    all_nicking.append(n)
+                        pegRNAs[j]['nsgRNA_oligo_top'] = nicking[0]['top']
+                        pegRNAs[j]['nsgRNA_oligo_bottom'] = nicking[0]['bottom']
+                    except IndexError:
+                        pegRNAs[j]['nsgRNA_oligo_top'] = ''
+                        pegRNAs[j]['nsgRNA_oligo_bottom'] = ''
+                    for n in nicking:
+                        n['#pegRNA'] = j + 1
+                        try:
+                            n['offtargets'] = ','.join(str(e) for e in n['offtargets'][0])
+                        except KeyError:
+                            n['offtargets'] = 'unknown'
+                        n['oligo_top'] = n['top']
+                        n['oligo_bottom'] = n['bottom']
+                        n = {k: n[k] for k in ['#pegRNA', 'kind', 'position', 'spacer', 'score', 'wt_score', 'offtargets',
+                                                 'oligo_top', 'oligo_bottom']}
+                        all_nicking.append(n)
 
                 for ext in alternate_extensions:
                     oligos = ext.pop('oligos')
                     ext['#pegRNA'] = j + 1
-                    ext['oligo_top'] = oligos['top']
-                    ext['oligo_bottom'] = oligos['bottom']
+                    for k, v in oligos.items():
+                        ext[f'{k}_oligo'] = v
+                    #ext['oligo_top'] = oligos['top']
+                    #ext['oligo_bottom'] = oligos['bottom']
                     ext = {k: ext[k] for k in ['#pegRNA', 'pbs_length', 'rt_template_length', 'sequence', 'pbs_gc',
-                                               'rt_gc', 'oligo_top', 'oligo_bottom',]}
+                                               'rt_gc'] +
+                           NUCLEASES[self.nuclease].cloning_strategies[self.cloning_strategy].excel_extension_headers}
                     all_alternate.append(ext)
 
             primers = [p['primers'] for p in result['primers']]
@@ -344,12 +360,22 @@ class Job:
 
         try:
             edit, sequence_object, padding = EditSerializer.parse_edit_dict(edit_dict, self.organism.pk,
-                                                                            dict({'nuclease': self.nuclease},
+                                                                            dict({'nuclease': self.nuclease,
+                                                                                  'cloning_strategy': self.cloning_strategy,
+                                                                                  'design_primers': self.design_primers},
                                                                                  **self.options))
             result.update(edit.create_oligos())
 
             if len(result['pegRNAs']) < 1:
                 result['warning'] = 'No pegRNAs found'
+
+            if not (self.run_bowtie and len(self.edits) <= django.conf.settings.DESIGN_MAX_EDITS_BOWTIE):
+                for pegRNA in result['pegRNAs']:
+                    pegRNA['offtargets'] = [['-']]
+                    for nicking in pegRNA['nicking']:
+                        nicking['offtargets'] = [['-']]
+                for primers in result['primers']:
+                    primers['product_count'] = '-'
 
             result['start'] -= padding
             result['edit'] = edit.__class__.__name__
@@ -448,9 +474,10 @@ class Job:
                 self.save()
 
             if self.run_bowtie:
-                self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
-                self.save()
-                self.primer_specificity_check()
+                if self.design_primers:
+                    self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
+                    self.save()
+                    self.primer_specificity_check()
 
                 self.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
                 self.save()
@@ -478,8 +505,10 @@ class JobSerializer(serializers.Serializer):
     edits = serializers.ListField(child=serializers.DictField(child=serializers.CharField()))
     options = serializers.DictField(child=serializers.IntegerField())
     nuclease = serializers.CharField(required=False)
+    cloning_strategy = serializers.CharField(required=False)
     warning = serializers.CharField()
     run_bowtie = serializers.BooleanField()
+    design_primers = serializers.BooleanField()
     excel_exported = serializers.BooleanField()
 
 
@@ -527,6 +556,15 @@ def update_summary(results: list, job_id: str):
     job = Job.load_from_disk(job_id)
     job.summary.extend(results)
     job.save()
+
+
+@celery.shared_task()
+def post_process_job_background(job_id: str):
+    job = Job.load_from_disk(job_id)
+    nuclease = NUCLEASES[job.nuclease]
+    cloning_strategy = nuclease.cloning_strategies[job.cloning_strategy]
+    for i, res in enumerate(cloning_strategy.post_process(job.results)):
+        job.save_result(res, i)
 
 
 @celery.shared_task()
@@ -596,9 +634,11 @@ def create_oligos_chain(job_id: str):
 
     results = init_job.si(job_id)
     results = results | celery.group([design_edit_background.si(*e) for e in edits]) | update_summary.s(job_id)
-    if job.run_bowtie:
-        results = results | queue_primer_specificity.si(job_id)
-        results = results | primer_specificity_background.si(job_id)
+    results = results | post_process_job_background.si(job_id)
+    if job.run_bowtie and len(job.edits) <= django.conf.settings.DESIGN_MAX_EDITS_BOWTIE:
+        if job.design_primers:
+            results = results | queue_primer_specificity.si(job_id)
+            results = results | primer_specificity_background.si(job_id)
         results = results | queue_spacer_specificity.si(job_id)
         results = results | spacer_specificity_background.si(job_id)
     results = results | export_excel.si(job_id)
