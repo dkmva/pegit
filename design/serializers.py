@@ -108,7 +108,7 @@ class EditSerializer(serializers.Serializer):
     def get_docstring(obj):
         docstring = obj.__doc__.splitlines()
         indent = min([len(line)-len(line.lstrip()) for line in docstring[1:] if line.lstrip()])
-        docstring = '\n'.join([docstring[0]] + [l[indent:] for l in docstring[1:]])
+        docstring = '\n'.join([docstring[0]] + [line[indent:] for line in docstring[1:]])
         return docstring
 
     @staticmethod
@@ -245,4 +245,15 @@ class NucleaseSerializer(serializers.Serializer):
     spacer_length = serializers.IntegerField()
     cut_site_position = serializers.IntegerField(source='_cut_site_position')
     scaffolds = serializers.DictField(child=serializers.CharField())
-    cloning_strategies = serializers.ListField(child=serializers.CharField())
+    cloning_strategies = serializers.SerializerMethodField()
+    docstring = serializers.SerializerMethodField()
+
+    @staticmethod
+    def get_docstring(obj):
+        docstring = obj.__doc__.splitlines()
+        indent = min([len(line) - len(line.lstrip()) for line in docstring[1:] if line.lstrip()])
+        docstring = '\n'.join([docstring[0]] + [line[indent:] for line in docstring[1:]])
+        return docstring
+
+    def get_cloning_strategies(self, obj):
+        return [(k, v.help_text(obj.scaffolds[obj.default_scaffold])) for k, v in obj.cloning_strategies.items()]

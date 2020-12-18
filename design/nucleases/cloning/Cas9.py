@@ -6,10 +6,21 @@ from ...helpers import reverse_complement
 
 
 class GGAssembly(BaseCloningStrategy):
-    """Cloning as in original paper"""
+    """Cloning as in Anzalone et al, 2019."""
 
     excel_oligo_headers = ['spacer_oligo_top', 'spacer_oligo_bottom', 'extension_oligo_top', 'extension_oligo_bottom']
     excel_extension_headers = ['top_oligo', 'bottom_oligo']
+
+    @classmethod
+    def help_text(cls, scaffold):
+        scaffold = cls.make_scaffold_oligos(scaffold)
+        return f"""Cloning as in Anzalone et al, 2019.
+        
+        Golden Gate Assembly of spacer oligos, scaffold oligos, and extension oligos into pegRNA-GG-acceptor vector (Addgene plasmid #132777).
+        
+        Scaffold oligos:
+        Top: {scaffold['top']}
+        Bottom: {scaffold['bottom']}"""
 
     @classmethod
     def _spacer_to_cloning(cls, spacer_sequence: str) -> str:
@@ -55,13 +66,35 @@ class GGAssembly(BaseCloningStrategy):
 
 
 class LibraryCloning(BaseCloningStrategy):
-    """Cloning for libraries"""
+    """Cloning for libraries."""
 
     can_design_primers = False
     can_design_nicking = False
     excel_oligo_headers = ['assembly_oligo']
     excel_extension_headers = ['assembly_oligo']
     allow_extension_filtering = False
+
+    @classmethod
+    def help_text(cls, scaffold):
+        scaffold = cls.make_scaffold_oligos(scaffold)
+        return f"""Cloning into modified lentiGuide-Puro plasmid for construction of prime editing libraries.
+    
+    Gibson/NeBuilder assembly into modified lentiGuide-puro vector.
+    
+    5’- pegRNA_spacer - SCAFFOLD CLONING SITE – pegRNA extension – TTTTTTT – 15 nt barcode – TARGET SEQUENCE – 3’.
+    
+    The Scaffold cloning site consists of a unique 20mer barcode flanked by BsmBI restriction sites for inserting the sgRNA scaffold.
+    
+    Oligos for cloning the scaffold into assembled plasmids:
+    Top: {scaffold['top']}
+    Bottom: {scaffold['bottom']}"""
+
+    @classmethod
+    def make_scaffold_oligos(cls, scaffold: str) -> OligoDict:
+        return {
+            'top': scaffold[5:-4],
+            'bottom': reverse_complement(scaffold[9:])
+        }
 
     @classmethod
     def _spacer_to_cloning(cls, spacer_sequence: str) -> str:
@@ -99,7 +132,10 @@ class LibraryCloning(BaseCloningStrategy):
 
     @classmethod
     def generate_n_mer(cls, n):
-        return ''.join([random.choice('ACGT') for _ in range(n)])
+        nmer = 'GAGACG CGTCTC'
+        while any(e in nmer for e in ['GAGACG', 'CGTCTC']):
+            nmer = ''.join([random.choice('ACGT') for _ in range(n)])
+        return nmer
 
     @classmethod
     def _update_barcodes(cls, oligo, used_15mers, used_20mers):

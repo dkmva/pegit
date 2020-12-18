@@ -448,7 +448,16 @@ class SpCas9Base(Cas9, abc.ABC):
 
 
 class SpCas9(SpCas9Base):
-    """SpCas9 nuclease."""
+    """SpCas9 nuclease.
+
+    NGG PAM.
+
+    20nt spacer.
+
+    On-target scores based on Doench. et al, 2016.
+
+    Nicking sgRNAs scored using CFD score against wild type sequence, Doench. et al, 2014.
+    """
 
     pam_motif = 'NGG'
 
@@ -472,7 +481,11 @@ class SpCas9(SpCas9Base):
 
 
 class SpCas9NG(SpCas9Base):
-    """SpCas9-NG"""
+    """SpCas9-NG
+
+    NGN PAM.
+    20nt spacer.
+    """
 
     pam_motif = 'NGN'
 
@@ -482,7 +495,12 @@ class SpCas9NG(SpCas9Base):
 
 
 class SaCas9(Cas9):
-    """SaCas9"""
+    """SaCas9
+
+    NNGRRT PAM.
+
+    21nt spacer.
+    """
 
     pam_motif = 'NNGRRT'
 
@@ -500,7 +518,12 @@ class SaCas9(Cas9):
 
 
 class SaCas9KKH(SaCas9):
-    """SaCas9KKH"""
+    """SaCas9KKH
+
+    NNNRRT PAM.
+
+    21nt spacer.
+    """
 
     pam_motif = 'NNNRRT'
 
@@ -510,7 +533,12 @@ class SaCas9KKH(SaCas9):
 
 
 class CjCas9(Cas9):
-    """CjCas9"""
+    """CjCas9
+
+    NNNNACAC PAM.
+
+    22nt spacer.
+    """
 
     pam_motif = 'NNNNACAC'
 
