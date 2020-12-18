@@ -125,7 +125,7 @@ class Cas9(Nuclease, abc.ABC):
 
         antisense = reverse_complement(
             reference_sequence[end - cls.downstream_from_cut_site - max(0, nucleotide_difference):])
-        antisense_offset = end - max(0, nucleotide_difference)
+        antisense_offset = end - max(0, nucleotide_difference) + min(len(antisense) -(spacer_search_range + cls.cut_site_position + cls.downstream_from_cut_site), 0)
 
         pam_motif = dgn_to_regex(cls.pam_motif) + '$'
         for match in regex.finditer(cls.target_motif,

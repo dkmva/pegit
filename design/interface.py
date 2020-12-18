@@ -242,7 +242,7 @@ class Job:
 
         # EDITS
         for i, result in enumerate(self.results, 1):
-            wsname = f"{i} {self.edits[i-1]['sequence']} {self.edits[i-1]['edit']}"
+            wsname = f"{i} {self.edits[i-1]['sequence'].split(',')[0]} {self.edits[i-1]['edit']}"[:31]
             pegRNAs = copy.deepcopy(result['pegRNAs'])
             if not pegRNAs:
                 summary_pegrnas.append({"#Edit": i})
