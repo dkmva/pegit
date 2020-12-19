@@ -1,8 +1,8 @@
 import random
 
-from . import BaseCloningStrategy
-from .. import OligoDict
-from ...helpers import reverse_complement
+from design.nucleases import BaseCloningStrategy
+from design.nucleases import OligoDict
+from design.helpers import reverse_complement
 
 
 class GGAssembly(BaseCloningStrategy):
@@ -15,12 +15,13 @@ class GGAssembly(BaseCloningStrategy):
     def help_text(cls, scaffold):
         scaffold = cls.make_scaffold_oligos(scaffold)
         return f"""Cloning as in Anzalone et al, 2019.
-        
-        Golden Gate Assembly of spacer oligos, scaffold oligos, and extension oligos into pegRNA-GG-acceptor vector (Addgene plasmid #132777).
-        
+
+        Golden Gate Assembly of spacer oligos, scaffold oligos, 
+        and extension oligos into [pegRNA-GG-acceptor vector (Addgene #132777)](https://www.addgene.org/132777/).
+
         Scaffold oligos:
-        Top: {scaffold['top']}
-        Bottom: {scaffold['bottom']}"""
+        * Top: {scaffold['top']}
+        * Bottom: {scaffold['bottom']}"""
 
     @classmethod
     def _spacer_to_cloning(cls, spacer_sequence: str) -> str:
@@ -61,6 +62,14 @@ class GGAssembly(BaseCloningStrategy):
         }
 
     @classmethod
+    def make_nicking_oligos(cls, spacer_sequence: str, scaffold: str):
+        target = cls._spacer_to_cloning(spacer_sequence)
+        return {
+            'top': 'cacc' + target,
+            'bottom': reverse_complement(target + scaffold[:4].lower())
+        }
+
+    @classmethod
     def alternate_extension(cls, extension_sequence: str, scaffold: str, **options):
         return cls.make_extension_oligos(extension_sequence, scaffold)
 
@@ -78,16 +87,18 @@ class LibraryCloning(BaseCloningStrategy):
     def help_text(cls, scaffold):
         scaffold = cls.make_scaffold_oligos(scaffold)
         return f"""Cloning into modified lentiGuide-Puro plasmid for construction of prime editing libraries.
-    
+
     Gibson/NeBuilder assembly into modified lentiGuide-puro vector.
-    
-    5’- pegRNA_spacer - SCAFFOLD CLONING SITE – pegRNA extension – TTTTTTT – 15 nt barcode – TARGET SEQUENCE – 3’.
-    
+
+    5’- atcttgtggaaaggacgaaacacc - pegRNA_spacer - SCAFFOLD CLONING SITE – pegRNA extension – TTTTTTT – 15 nt barcode – TARGET SEQUENCE – aagcttggcgtaactagatc - 3’.
+
     The Scaffold cloning site consists of a unique 20mer barcode flanked by BsmBI restriction sites for inserting the sgRNA scaffold.
-    
+
+    No primers or nicking sgRNAs are designed when using this cloning method.
+
     Oligos for cloning the scaffold into assembled plasmids:
-    Top: {scaffold['top']}
-    Bottom: {scaffold['bottom']}"""
+    * Top: {scaffold['top']}
+    * Bottom: {scaffold['bottom']}"""
 
     @classmethod
     def make_scaffold_oligos(cls, scaffold: str) -> OligoDict:
@@ -106,25 +117,25 @@ class LibraryCloning(BaseCloningStrategy):
 
     @classmethod
     def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
-        upstream = 'ATCTTGTGGAAAGGACGAAACACC'
-        downstream = 'AAGCTTGGCGTAACTAGATC'
+        upstream = 'atcttgtggaaaggacgaaacacc'
+        downstream = 'aagcttggcgtaactagatc'
         barcode20 = 'YYYYYYYYYYYYYYYYYYYY'
         barcode15 = 'XXXXXXXXXXXXXXX'
         target = ''.join([options['upstream'][-20:], options['downstream'][:options['cut_dist'] + 30]])
         return {'assembly': ''.join([
             upstream,
             spacer_sequence,
-            scaffold[:10],
-            'GAGACG',  # restriction site
+            scaffold[:10].lower(),
+            'gagacg',  # restriction site
             barcode20,
-            'CGTCTC',  # restriction site
-            scaffold[-5:],
+            'cgtctc',  # restriction site
+            scaffold[-5:].lower(),
             extension_sequence,
             'TTTTTTT',
             barcode15,
             target,
             downstream
-            ])}
+        ])}
 
     @classmethod
     def alternate_extension(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
@@ -132,9 +143,9 @@ class LibraryCloning(BaseCloningStrategy):
 
     @classmethod
     def generate_n_mer(cls, n):
-        nmer = 'GAGACG CGTCTC'
-        while any(e in nmer for e in ['GAGACG', 'CGTCTC']):
-            nmer = ''.join([random.choice('ACGT') for _ in range(n)])
+        nmer = 'gagacg cgtctc'
+        while any(e in nmer for e in ['gagacg', 'cgtctc']):
+            nmer = ''.join([random.choice('acgt') for _ in range(n)])
         return nmer
 
     @classmethod

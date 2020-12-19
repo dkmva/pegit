@@ -18,20 +18,68 @@ class Nuclease(abc.ABC):
     Can be subclassed to make functional nucleases
     """
 
-    target_motif: str = None  # type: ignore
-    pam_motif: str = None  # type: ignore
+    _target_motif: str = None  # type: ignore
+    _pam_motif: str = None  # type: ignore
 
-    upstream_length: int = 0
-    downstream_length: int = 0
-    spacer_length: int = None  # type: ignore
+    _upstream_length: int = 0
+    _downstream_length: int = 0
+    _spacer_length: int = None  # type: ignore
     _cut_site_position: int = None  # type: ignore
 
-    scaffolds: typing.Dict = dataclasses.field(default_factory=dict)
-    default_scaffold: str = None  # type: ignore
+    _scaffolds: typing.Dict = dataclasses.field(default_factory=dict)
+    _default_scaffold: str = None  # type: ignore
+
+    _cloning_strategies: typing.Dict = dataclasses.field(default_factory=dict)
+    _design_strategies: typing.Dict = dataclasses.field(default_factory=dict)
+
+    @classproperty
+    def target_motif(cls):
+        return cls._target_motif
+
+    @classproperty
+    def pam_motif(cls):
+        return cls._pam_motif
+
+    @classproperty
+    def upstream_length(cls):
+        return cls._upstream_length
+
+    @classproperty
+    def downstream_length(cls):
+        return cls._downstream_length
+
+    @classproperty
+    def spacer_length(cls):
+        return cls._spacer_length
 
     @classproperty
     def cut_site_position(cls):
         return cls.upstream_length + cls._cut_site_position
+
+    @classproperty
+    def scaffolds(cls):
+        try:
+            return cls._scaffolds
+        except AttributeError:
+            return {}
+
+    @classproperty
+    def default_scaffold(cls):
+        return cls._default_scaffold
+
+    @classproperty
+    def cloning_strategies(cls):
+        try:
+            return cls._cloning_strategies
+        except AttributeError:
+            return {}
+
+    @classproperty
+    def design_strategies(cls):
+        try:
+            return cls._design_strategies
+        except AttributeError:
+            return {}
 
     @classproperty
     def downstream_from_cut_site(cls):
@@ -48,14 +96,10 @@ class Nuclease(abc.ABC):
         return scaffold
 
     @classmethod
-    def _spacer_to_cloning(cls, spacer_sequence: str, scaffold_name: typing.Optional[str] = None) -> typing.Tuple[str, str]:
-        scaffold = cls._scaffold_name_to_sequence(scaffold_name)
-
-        target = spacer_sequence.upper()
-        if not target.startswith('G'):
-            target = 'g' + target
-
-        return target, scaffold
+    def get_design_strategy(cls, strategy):
+        if strategy is None:
+            strategy = next(iter(cls.design_strategies.keys()))
+        return cls.design_strategies[strategy]
 
     @classmethod
     def score_spacers(cls, spacers: typing.List) -> typing.List:
@@ -64,27 +108,47 @@ class Nuclease(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def make_scaffold_oligos(cls, scaffold_name: str = None) -> OligoDict:
-        """
-        Method to convert a scaffold name to oligos.
-        Use cls._scaffold_name_to_sequence(scaffold_name) to get scaffold sequence from name.
-        """
+    def _filter_offtarget(cls, seq):
+        """Should return True, if seq is a valid off target"""
+
+    @classmethod
+    def filter_extension(cls, seq):
+        return False
+
+    @classmethod
+    def _filter_extension(cls, seq, strategy):
+        if isinstance(strategy, str):
+            strategy = cls.cloning_strategies[strategy]
+        if strategy.allow_extension_filtering:
+            return cls.filter_extension(seq)
+        return False
+
+
+@dataclasses.dataclass()
+class BaseCloningStrategy(abc.ABC):
+
+    can_design_primers: bool = True
+    can_design_nicking: bool = True
+    allow_extension_filtering: bool = True
+
+    @classmethod
+    def _spacer_to_cloning(cls, spacer_sequence: str) -> str:
+        # Overwrite in subclasses to modify spacer sequence for cloning
+        # Eg. prepend a 'G' for U6 promoters
+        return spacer_sequence
 
     @classmethod
     @abc.abstractmethod
-    def make_spacer_oligos(cls, spacer_sequence: str, scaffold_name: typing.Optional[str] = None) -> OligoDict:
-        """
-        Method to convert a spacer sequence, and optionally a scaffold name to pegRNA spacer oligos.
-        Use cls._scaffold_name_to_sequence(scaffold_name) to get scaffold sequence from name.
-        """
+    def design_cloning(cls, **options):
+        pass
 
     @classmethod
-    @abc.abstractmethod
-    def make_nicking_oligos(cls, spacer_sequence: str, scaffold_name: typing.Optional[str] = None) -> OligoDict:
-        """
-        Method to convert a spacer sequence, and optionally a scaffold name to nicking oligos.
-        Use cls._scaffold_name_to_sequence(scaffold_name) to get scaffold sequence from name.
-        """
+    def post_process(cls, designs):
+        return designs
+
+
+@dataclasses.dataclass()
+class BaseDesignStrategy(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
@@ -98,26 +162,20 @@ class Nuclease(abc.ABC):
     @classmethod
     @abc.abstractmethod
     def find_nicking_spacers(cls, reference_sequence: str, altered_sequence: str, spacer_strand: typing.Literal[1, -1],
-                             cut_site: int, scaffold: str, nicking_range: int, **options) -> typing.List:
+                             cut_site: int, scaffold: str, nicking_range: int, cloning_method,
+                             **options) -> typing.List:
         """
         Method to find nicking spacers for a given pegRNA (cut site and strand).
         Should return spacers on opposite strand that cut within range
         """
 
-    @classmethod
-    @abc.abstractmethod
-    def _make_pbs_sequence(cls, reference: str, pbs_min_length: int, pbs_max_length: int, strategy,
-                           **options) -> typing.Tuple[str, typing.List]:
-        """
-        Method to find PBS sequence for a pegRNA spacer.
-        Should return optimal sequence and a list of alternatives
-        """
-
-    @classmethod
-    @abc.abstractmethod
-    def _make_rt_sequence(cls, reference, cut_dist, nucleotide_difference, alteration_length, rt_min_length,
-                          rt_max_length, strategy, **options) -> typing.Tuple[str, typing.List]:
-        """
-        Method to find RT template sequence for a pegRNA spacer.
-        Should return optimal sequence and a list of alternatives
+    @staticmethod
+    def make_extension_sequence(nuclease, reference_sequence, altered_sequence, spacer_strand, spacer_cut_site,
+                                cut_dist,
+                                alteration_length, pbs_min_length, pbs_max_length, rt_min_length, rt_max_length,
+                                strategy,
+                                **options):
+        """Method to create the pegRNA extension sequence.
+        pegRNA extension sequences consist of a PBS and a RT template.
+        The PBS is upstream of the cut site. The RT template is downstream of the cut site and contains the edit sequence.
         """

@@ -16,7 +16,8 @@ from design.nucleases import NUCLEASES
 class OligoSet:
     """Set of oligos for cloning pegRNAs."""
 
-    def __init__(self, tracker, spacer, scaffold=None, nuclease=None, repair=False, cloning_strategy=None):
+    def __init__(self, tracker, spacer, scaffold=None, nuclease=None, repair=False, cloning_strategy=None,
+                 design_strategy=None):
         if nuclease is None:
             nuclease = django.conf.settings.DESIGN_CONF['default_nuclease']
         if isinstance(nuclease, str):
@@ -25,6 +26,8 @@ class OligoSet:
             self.scaffold = nuclease.default_scaffold
         if cloning_strategy is None:
             cloning_strategy = next(iter(nuclease.cloning_strategies))
+        if design_strategy is None:
+            design_strategy = next(iter(nuclease.design_strategies))
         self.spacer_sequence = spacer['spacer']
         self.spacer_position = spacer['position']
         self.spacer_cut_site = spacer['cut_site']
@@ -44,6 +47,7 @@ class OligoSet:
         self.alternate_extensions = []
         self.repair = repair
         self.cloning_strategy = self.nuclease.cloning_strategies[cloning_strategy]
+        self.design_strategy = self.nuclease.design_strategies[design_strategy]
 
     @property
     def info(self):
@@ -129,12 +133,15 @@ class OligoSet:
         if self.repair:
             reference_sequence, altered_sequence = altered_sequence, reference_sequence
         if self.cloning_strategy.can_design_nicking:
-            spacers = self.nuclease.find_nicking_spacers(
-                reference_sequence,
-                altered_sequence,
-                self.spacer_strand,
-                self.spacer_cut_site,
-                self.scaffold, **options)
+            spacers = self.design_strategy.find_nicking_spacers(
+                nuclease=self.nuclease,
+                reference_sequence=reference_sequence,
+                altered_sequence=altered_sequence,
+                spacer_strand=self.spacer_strand,
+                cut_site=self.spacer_cut_site,
+                scaffold=self.scaffold,
+                cloning_method=self.cloning_strategy,
+                **options)
 
             for spacer in spacers:
 
@@ -187,7 +194,8 @@ class OligoSet:
 
         if self.repair:
             reference_sequence, altered_sequence = altered_sequence, reference_sequence
-        pbs_length, rt_template_length, extension, alternate_extensions = self.nuclease.make_extension_sequence(
+        pbs_length, rt_template_length, extension, alternate_extensions = self.design_strategy.make_extension_sequence(
+            self.nuclease,
             reference_sequence,
             altered_sequence,
             self.spacer_strand,
@@ -552,11 +560,12 @@ class AlterationTracker:
 
         return max(end-start, len(self.index[start:end + insertions - deletions]))
 
-    def make_oligos(self, repair, num_pegs, nuclease=None, silence_pam=False, design_primers=False, cloning_strategy=None, **options):
+    def make_oligos(self, repair, num_pegs, nuclease=None, silence_pam=False, design_primers=False,
+                    cloning_strategy=None, design_strategy=None, **options):
         """Make oligos for all selected spacers"""
         if not self.number_of_alterations:
             raise Exception('No DNA changes found')
-        oligo_sets = self.find_best_spacers(num_pegs, repair, nuclease, cloning_strategy, **options)
+        oligo_sets = self.find_best_spacers(num_pegs, repair, nuclease, cloning_strategy, design_strategy, **options)
         degenerate_sequence = self.degenerate_sequence(strict=silence_pam == 'strict')
         for oligo_set in oligo_sets:
             oligo_set.make_oligos(degenerate_sequence, silence_pam, **options)
@@ -565,8 +574,6 @@ class AlterationTracker:
         alterations = self.alterations
 
         # Visualisations for List view
-        # TODO: FIX FOR CASES WITH ONLY SPACERS ON ONE STRAND !!!
-
         start = sum(alterations[0])
         end = sum(alterations[-1])
 
@@ -651,7 +658,7 @@ class AlterationTracker:
             'start': start,
         }
 
-    def find_best_spacers(self, num_pegs, repair=False, nuclease=None, cloning_strategy=None, **options):
+    def find_best_spacers(self, num_pegs, repair=False, nuclease=None, cloning_strategy=None, design_strategy=None, **options):
         """Find pegRNA spacers.
 
                 Required arguments:
@@ -671,11 +678,12 @@ class AlterationTracker:
             nuclease = django.conf.settings.DESIGN_CONF['default_nuclease']
 
         nuclease = NUCLEASES[nuclease]
+        design_strategy = nuclease.get_design_strategy(design_strategy)
 
         if repair:
             reference_sequence, altered_sequence = altered_sequence, reference_sequence
 
-        spacers = nuclease.find_spacers(reference_sequence, altered_sequence, position, position + self.alteration_length, **options)
+        spacers = design_strategy.find_spacers(nuclease, reference_sequence, altered_sequence, position, position + self.alteration_length, **options)
         n = min(num_pegs, len(spacers))
         for i in range(n):
             spacer = spacers[i]['spacer']

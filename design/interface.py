@@ -408,7 +408,10 @@ class Job:
         results = self.results
         result = next(results)
         while len(result['primers']) == 0:
-            result = next(results)
+            try:
+                result = next(results)
+            except StopIteration:
+                break
             result_index += 1
         try:
             result['primers'][count]['products'] = set()

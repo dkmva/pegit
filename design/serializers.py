@@ -249,11 +249,13 @@ class NucleaseSerializer(serializers.Serializer):
     docstring = serializers.SerializerMethodField()
 
     @staticmethod
-    def get_docstring(obj):
-        docstring = obj.__doc__.splitlines()
-        indent = min([len(line) - len(line.lstrip()) for line in docstring[1:] if line.lstrip()])
-        docstring = '\n'.join([docstring[0]] + [line[indent:] for line in docstring[1:]])
-        return docstring
+    def remove_indent(string):
+        string = string.splitlines()
+        indent = min([len(line) - len(line.lstrip()) for line in string[1:] if line.lstrip()])
+        return '\n'.join([string[0]] + [line[indent:] for line in string[1:]])
+
+    def get_docstring(self, obj):
+        return self.remove_indent(obj.__doc__)
 
     def get_cloning_strategies(self, obj):
-        return [(k, v.help_text(obj.scaffolds[obj.default_scaffold])) for k, v in obj.cloning_strategies.items()]
+        return [(k, self.remove_indent(v.help_text(obj.scaffolds[obj.default_scaffold]))) for k, v in obj.cloning_strategies.items()]
