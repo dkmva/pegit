@@ -126,12 +126,10 @@ class JobViewSet(viewsets.ViewSet):
         return Response([])
 
     def retrieve(self, request, pk, *args, **kwargs):
-        for _ in range(5):
-            try:
-                return FileResponse(open(os.path.join(django.conf.settings.DESIGN_OUTPUT_FOLDER, pk, 'summary.json'), 'rb'))
-            except FileNotFoundError:
-
-        raise NotFound
+        try:
+            return FileResponse(open(os.path.join(django.conf.settings.DESIGN_OUTPUT_FOLDER, pk, 'summary.json'), 'rb'))
+        except FileNotFoundError:
+            raise NotFound
 
     @action(detail=True, methods=['GET'], url_path='edit(?P<edit>[a-z0-9]+)')
     def edit(self, request, pk, edit, *args, **kwargs):
@@ -168,8 +166,8 @@ class JobViewSet(viewsets.ViewSet):
                 if len(j.edits) % 10:
                     length += 1
                 return Response({'percent': (length - count) / length * 100})
-            except ValueError, IndexError:
-            return Response({'percent': 100})
+            except (ValueError, IndexError):
+                return Response({'percent': 100})
 
     def create(self, request, *args, **kwargs):
         pk = request.data.get('organism', None)
