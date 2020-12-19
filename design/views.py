@@ -1,7 +1,6 @@
 import base64
 import json
 import os
-import time
 
 from Bio import Entrez
 import django.conf
@@ -127,11 +126,11 @@ class JobViewSet(viewsets.ViewSet):
         return Response([])
 
     def retrieve(self, request, pk, *args, **kwargs):
-        for i in range(5):
+        for _ in range(5):
             try:
                 return FileResponse(open(os.path.join(django.conf.settings.DESIGN_OUTPUT_FOLDER, pk, 'summary.json'), 'rb'))
             except FileNotFoundError:
-                time.sleep(.5)
+
         raise NotFound
 
     @action(detail=True, methods=['GET'], url_path='edit(?P<edit>[a-z0-9]+)')
@@ -161,15 +160,15 @@ class JobViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['GET'])
     def design_progress(self, request, pk, *args, **kwargs):
         with celery_app.pool.acquire(block=True) as conn:
-            tasks = conn.default_channel.client.lrange('design_queue', 0, -1)
-            j = Job.load_from_disk(pk)
-            length = len(j.edits) // 10
-            count = [eval(json.loads(t)['headers']['argsrepr'])[1] for t in tasks].count(pk)
-            if len(j.edits) % 10:
-                length += 1
-        try:
-            return Response({'percent': (length - count) / length * 100})
-        except ValueError:
+            try:
+                tasks = conn.default_channel.client.lrange('design_queue', 0, -1)
+                j = Job.load_from_disk(pk)
+                length = len(j.edits) // 10
+                count = [eval(json.loads(t)['headers']['argsrepr'])[1] for t in tasks].count(pk)
+                if len(j.edits) % 10:
+                    length += 1
+                return Response({'percent': (length - count) / length * 100})
+            except ValueError, IndexError:
             return Response({'percent': 100})
 
     def create(self, request, *args, **kwargs):
