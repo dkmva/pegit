@@ -643,9 +643,9 @@ class AlterationTracker:
         nicking_offset = visual_nicking.find(visual_sequence)
 
         primers = []
-        if design_primers and oligo_sets[0].cloning_strategy.can_design_primers:
-            primers = self.make_primers(**options)
-
+        if oligo_sets and design_primers:
+            if oligo_sets[0].cloning_strategy.can_design_primers:
+                primers = self.make_primers(**options)
         return {
             'pegRNAs': sorted([oligo_set.info for oligo_set in oligo_sets],
                               key=lambda os: (-os['pam_disrupted'], -os['pam_silenced'], os['distance'])),
