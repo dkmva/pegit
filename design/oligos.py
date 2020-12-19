@@ -109,8 +109,7 @@ class OligoSet:
 
         if self.spacer_strand == -1:
             upstream, downstream = reverse_complement(downstream), reverse_complement(upstream)
-        self.oligos = self.nuclease.do_cloning(strategy=self.cloning_strategy,
-                                               spacer_sequence=self.spacer_sequence,
+        self.oligos = self.cloning_strategy.design_cloning(spacer_sequence=self.spacer_sequence,
                                                scaffold=self.scaffold,
                                                extension_sequence=self.extension,
                                                upstream=upstream,
