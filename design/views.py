@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import time
 
 from Bio import Entrez
 import django.conf
@@ -126,10 +127,12 @@ class JobViewSet(viewsets.ViewSet):
         return Response([])
 
     def retrieve(self, request, pk, *args, **kwargs):
-        try:
-            return FileResponse(open(os.path.join(django.conf.settings.DESIGN_OUTPUT_FOLDER, pk, 'summary.json'), 'rb'))
-        except FileNotFoundError:
-            raise NotFound
+        for i in range(5):
+            try:
+                return FileResponse(open(os.path.join(django.conf.settings.DESIGN_OUTPUT_FOLDER, pk, 'summary.json'), 'rb'))
+            except FileNotFoundError:
+                time.sleep(.5)
+        raise NotFound
 
     @action(detail=True, methods=['GET'], url_path='edit(?P<edit>[a-z0-9]+)')
     def edit(self, request, pk, edit, *args, **kwargs):
