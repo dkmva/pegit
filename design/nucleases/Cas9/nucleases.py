@@ -28,15 +28,6 @@ class Cas9(Nuclease, abc.ABC):
         'Anzalone': Anzalone
     }
 
-    @classmethod
-    def do_alternate_cloning(cls, strategy=None, scaffold=None, **options):
-        if strategy is None:
-            strategy = next(iter(cls.cloning_strategies.values()))
-        if isinstance(strategy, str):
-            strategy = cls.cloning_strategies[strategy]
-        scaffold = cls._scaffold_name_to_sequence(scaffold)
-        return strategy.alternate_extension(scaffold=scaffold, **options)
-
     @classproperty
     def _cut_site_position(cls):
         return cls.spacer_length - 3

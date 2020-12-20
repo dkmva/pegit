@@ -57,7 +57,7 @@ class GGAssembly(BaseCloningStrategy):
     def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
         return {
             'spacer': cls.make_spacer_oligos(spacer_sequence, scaffold),
-            'scaffold': cls.make_scaffold_oligos(scaffold),
+            #'scaffold': cls.make_scaffold_oligos(scaffold),
             'extension': cls.make_extension_oligos(extension_sequence, scaffold),
         }
 

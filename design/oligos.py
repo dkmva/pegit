@@ -23,7 +23,8 @@ class OligoSet:
         if isinstance(nuclease, str):
             nuclease = NUCLEASES[nuclease]
         if scaffold is None:
-            self.scaffold = nuclease.default_scaffold
+            scaffold = nuclease.default_scaffold
+        self.scaffold = nuclease.scaffold_name_to_sequence(scaffold)
         if cloning_strategy is None:
             cloning_strategy = next(iter(nuclease.cloning_strategies))
         if design_strategy is None:
@@ -120,14 +121,13 @@ class OligoSet:
         #self.oligos['scaffold'] = self.nuclease.make_scaffold_oligos(self.scaffold)
         #self.oligos['extension'] = self.nuclease.make_extension_oligos(self.extension, self.scaffold)
         for extension in self.alternate_extensions:
-            extension['oligos'] = self.nuclease.do_alternate_cloning(strategy=self.cloning_strategy,
-                                                                     spacer_sequence=self.spacer_sequence,
-                                                                     scaffold=self.scaffold,
-                                                                     extension_sequence=extension['sequence'],
-                                                                     upstream=upstream,
-                                                                     downstream=downstream,
-                                                                     cut_dist=cut_dist,
-                                                                     **options)
+            extension['oligos'] = self.cloning_strategy.alternate_extension(spacer_sequence=self.spacer_sequence,
+                                                                            scaffold=self.scaffold,
+                                                                            extension_sequence=extension['sequence'],
+                                                                            upstream=upstream,
+                                                                            downstream=downstream,
+                                                                            cut_dist=cut_dist,
+                                                                            **options)
 
         if self.repair:
             reference_sequence, altered_sequence = altered_sequence, reference_sequence

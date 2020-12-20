@@ -86,7 +86,7 @@ class Nuclease(abc.ABC):
         return (cls.spacer_length + len(cls.pam_motif) + cls.downstream_length) - cls._cut_site_position
 
     @classmethod
-    def _scaffold_name_to_sequence(cls, scaffold_name: typing.Optional[str] = None) -> str:
+    def scaffold_name_to_sequence(cls, scaffold_name: typing.Optional[str] = None) -> str:
         """Get scaffold from name"""
         if scaffold_name is None:
             scaffold = cls.scaffolds[cls.default_scaffold]
