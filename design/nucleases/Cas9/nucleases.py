@@ -34,7 +34,7 @@ class Cas9(Nuclease, abc.ABC):
 
     @classproperty
     def target_motif(cls):
-        return f'(?P<upstream>.{{{cls.upstream_length}}})(?P<spacer>.{{{cls.spacer_length}}})(?P<PAM>{dgn_to_regex(cls.pam_motif)})(?P<downstream>.{{{cls.downstream_length}}})'
+        return f'(?P<upstream>[ACTG]{{{cls.upstream_length}}})(?P<spacer>[ACTG]{{{cls.spacer_length}}})(?P<PAM>{dgn_to_regex(cls.pam_motif)})(?P<downstream>[ACTG]{{{cls.downstream_length}}})'
 
     @classmethod
     def _is3b(cls, alt_bind, wt_bind):

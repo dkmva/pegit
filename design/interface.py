@@ -383,7 +383,7 @@ class Job:
             if sequence_type == 'custom':
                 result['sequence'] = ','.join([sequence_object.name, sequence_object.sequence])
         except Exception as e:
-            result['warning'] = f'An unknown error occured, {repr(e)}'
+            result['warning'] = f'An unknown error occurred, {repr(e)}'
 
         finally:
             self.save_result(result, i)
@@ -493,7 +493,7 @@ class Job:
             self.save()
         except Exception as e:
             self.status = JobStatus.FAILED_STATUS
-            self.warning = f'An unknown error occured, {repr(e)}'
+            self.warning = f'An unknown error occurred, {repr(e)}'
             self.save()
 
             return e

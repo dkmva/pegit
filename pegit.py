@@ -87,7 +87,7 @@ def make_2bit_and_scaffold_list(namespace) -> None:
 
     print('Running faToTwoBit')
     subprocess.run(
-        f'{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH.replace("twoBitToFa", "faToTwoBit")} {fasta} {django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{name}.2bit',
+        f'{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH.replace("twoBitToFa", "faToTwoBit")} "{fasta}" "{django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{name}.2bit"',
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
 
     print('Getting record ids')
@@ -111,7 +111,7 @@ def make_bowtie(namespace) -> None:
     except FileExistsError:
         pass
     subprocess.run(
-        f'{django.conf.settings.DESIGN_BOWTIE_PATH}-build {fasta} {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{name}/{name}',
+        f'{django.conf.settings.DESIGN_BOWTIE_PATH}-build "{fasta}" "{django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{name}/{name}"',
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
 
     print('done')
