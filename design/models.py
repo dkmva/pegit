@@ -226,7 +226,8 @@ class Organism(models.Model):
                 for record in parse_gff_file(file_path, disable=silent):
                     attributes = record['attributes']
 
-                    if record['type'] in ['ncRNA_gene', 'gene', 'pseudogene']:
+                    #if record['type'] in ['ncRNA_gene', 'gene', 'pseudogene', 'transposable_element_gene']:
+                    if 'ID' in attributes and attributes['ID'].split(':')[0] == 'gene':
                         try:
                             name = attributes['Name']
                         except KeyError:
@@ -252,8 +253,10 @@ class Organism(models.Model):
                 for record in parse_gff_file(file_path, disable=silent):
                     attributes = record['attributes']
 
-                    if record['type'] in ['pseudogenic_transcript', 'scRNA', 'miRNA', 'snRNA', 'tRNA', 'ncRNA', 'rRNA',
-                                          'snoRNA', 'lnc_RNA', 'mRNA']:
+                    #if record['type'] in ['pseudogenic_transcript', 'scRNA', 'miRNA', 'snRNA', 'tRNA', 'ncRNA', 'rRNA',
+                    #                      'snoRNA', 'lnc_RNA', 'mRNA', 'transposable_element', 'pre_miRNA', 'SRP_RNA',
+                    #                      'RNase_MRP_RNA']:
+                    if 'ID' in attributes and attributes['ID'].split(':')[0] == 'transcript':
                         try:
                             name = attributes['Name']
                         except KeyError:

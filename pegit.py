@@ -4,6 +4,7 @@ import pathlib
 import subprocess
 
 from Bio import SeqIO
+import yaml
 
 import django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'prime.settings')
@@ -49,7 +50,6 @@ def run_organism(namespace) -> None:
     edits = options.pop('edits')
     output_folder = options.pop('output_folder')
     job_name = options.pop('job_name')
-    jobdir = os.path.join(output_folder, job_name)
     organism = Organism.objects.get(pk=organism)
 
     j = Job(organism, options=options, job_id=job_name, job_name=job_name, output_folder=output_folder)
@@ -67,7 +67,6 @@ def run_clinvar(namespace) -> None:
     edits = options.pop('edits')
     output_folder = options.pop('output_folder')
     job_name = options.pop('job_name')
-    jobdir = os.path.join(output_folder, job_name)
 
     j = Job(organism, options=options, job_id=job_name, job_name=job_name, output_folder=output_folder)
     print('Parsing edit list')
@@ -77,11 +76,7 @@ def run_clinvar(namespace) -> None:
     print(f'Oligos saved to {j.jobdir}')
 
 
-def make_2bit_and_scaffold_list(namespace) -> None:
-    options = vars(namespace)
-    fasta = options['fasta']
-    name = options['name']
-
+def _make_2bit_and_scaffold_list(fasta, name) -> str:
     if name is None:
         name = pathlib.Path(fasta).stem
 
@@ -92,16 +87,22 @@ def make_2bit_and_scaffold_list(namespace) -> None:
 
     print('Getting record ids')
     scaffolds = [record.id for record in SeqIO.parse(fasta, 'fasta')]
-    with open(f'{django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{name}', 'w') as f:
+    scaffolds_path = f'{django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{name}'
+    with open(scaffolds_path, 'w') as f:
         f.write(' '.join(scaffolds))
     print('done')
 
+    return scaffolds_path
 
-def make_bowtie(namespace) -> None:
+
+def make_2bit_and_scaffold_list(namespace) -> None:
     options = vars(namespace)
     fasta = options['fasta']
     name = options['name']
+    _make_2bit_and_scaffold_list(fasta, name)
 
+
+def _make_bowtie(fasta, name) -> None:
     if name is None:
         name = pathlib.Path(fasta).stem
 
@@ -115,6 +116,34 @@ def make_bowtie(namespace) -> None:
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
 
     print('done')
+
+
+def make_bowtie(namespace) -> None:
+    options = vars(namespace)
+    fasta = options['fasta']
+    name = options['name']
+
+    _make_bowtie(fasta, name)
+
+
+def make_2bit_and_bowtie(namespace) -> None:
+    make_2bit_and_scaffold_list(namespace)
+    make_bowtie(namespace)
+
+
+def add_organism_folder(namespace) -> None:
+    options = vars(namespace)
+    path = options['path']
+    with open(os.path.join(path, 'info.yaml')) as f:
+        conf = yaml.safe_load(f)
+
+    assembly = conf['assembly']
+    fasta = os.path.join(path, 'assembly.fa')
+    gff = os.path.join(path, 'genes.gff3')
+    scaffolds = _make_2bit_and_scaffold_list(fasta, assembly)
+    _make_bowtie(fasta, assembly)
+
+    Organism.add_to_database(**conf, file_path=gff, scaffolds=scaffolds)
 
 
 def main():
@@ -143,6 +172,11 @@ def main():
     add_parser.add_argument('--sequence_search', required=True, help='URL to sequence search')
     add_parser.add_argument('--annotation_name', required=False, help='Name of the annotation, defaults to the basename of the GFF3 file.')
     add_parser.add_argument('--scaffolds', required=False, help='path to file with scaffolds list')
+
+    # Add new organism to the database
+    add_parser = organisms_subparsers.add_parser('folder')
+    add_parser.set_defaults(func=add_organism_folder)
+    add_parser.add_argument('path', help='path to folder')
 
     # Functions for designing pegRNAs
     design_parser = subparsers.add_parser('design')
@@ -184,6 +218,13 @@ def main():
     # Build bowtie index
     bowtie_parser = utils_subparsers.add_parser('bowtie')
     bowtie_parser.set_defaults(func=make_bowtie)
+
+    bowtie_parser.add_argument('fasta', help='fasta file')
+    bowtie_parser.add_argument('--name', help='assembly name', required=False)
+
+    # Build 2bit and bowtie index
+    bowtie_parser = utils_subparsers.add_parser('both')
+    bowtie_parser.set_defaults(func=make_2bit_and_bowtie)
 
     bowtie_parser.add_argument('fasta', help='fasta file')
     bowtie_parser.add_argument('--name', help='assembly name', required=False)
