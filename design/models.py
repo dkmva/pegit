@@ -289,7 +289,7 @@ class Organism(models.Model):
                     if record['type'] == 'CDS':
                         parent = attributes['Parent'].split(':')[1]
 
-                        if parent in genes:
+                        if parent in genes and parent not in transcripts:
                             transcripts[parent] = Transcript.objects.create(
                                 gene=genes[attributes['Parent']].split(':')[1],
                                 transcript_id=attributes['Parent'].split(':')[1],
@@ -351,7 +351,7 @@ class Gene(models.Model, SequenceObjectMixin):
     """
     organism = models.ForeignKey('Organism', on_delete=models.CASCADE, related_name='genes')
     gene_id = models.CharField(max_length=200, db_index=True)
-    name = models.CharField(max_length=50, db_index=True)
+    name = models.CharField(max_length=200, db_index=True)
     chromosome = models.CharField(max_length=200)
     strand = models.CharField(max_length=1)
     start = models.PositiveIntegerField()
