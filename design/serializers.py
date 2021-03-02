@@ -251,8 +251,10 @@ class NucleaseSerializer(serializers.Serializer):
     @staticmethod
     def remove_indent(string):
         string = string.splitlines()
-        indent = min([len(line) - len(line.lstrip()) for line in string[1:] if line.lstrip()])
-        return '\n'.join([string[0]] + [line[indent:] for line in string[1:]])
+        if len(string) > 1:
+            indent = min([len(line) - len(line.lstrip()) for line in string[1:] if line.lstrip()])
+            return '\n'.join([string[0]] + [line[indent:] for line in string[1:]])
+        return string[0]
 
     def get_docstring(self, obj):
         return self.remove_indent(obj.__doc__)

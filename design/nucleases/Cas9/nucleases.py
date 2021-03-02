@@ -12,7 +12,7 @@ import CFD
 
 from design.helpers import reverse_complement, extract_sequences, run_bowtie_multi, complement, dgn_to_regex
 from .. import Nuclease
-from .plasmids import GGAssembly, LibraryCloning
+from .plasmids import GGAssembly, LibraryCloning, Synthetic
 from .design_rules import Anzalone
 
 
@@ -22,6 +22,7 @@ class Cas9(Nuclease, abc.ABC):
     cloning_strategies = {
         'pegRNA-GG-acceptor': GGAssembly,
         'Library': LibraryCloning,
+        'Synthetic': Synthetic,
     }
 
     design_strategies = {

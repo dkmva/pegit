@@ -123,6 +123,12 @@ class Nuclease(abc.ABC):
             return cls.filter_extension(seq)
         return False
 
+    @classmethod
+    def get_cloning_strategy(cls, strategy):
+        if isinstance(strategy, str):
+            strategy = cls.cloning_strategies[strategy]
+        return strategy
+
 
 @dataclasses.dataclass()
 class BaseCloningStrategy(abc.ABC):
@@ -145,6 +151,10 @@ class BaseCloningStrategy(abc.ABC):
     @classmethod
     def post_process(cls, designs):
         return designs
+
+    @classmethod
+    def can_express(cls, sequence):
+        return True
 
 
 @dataclasses.dataclass()

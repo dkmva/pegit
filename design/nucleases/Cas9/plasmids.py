@@ -1,11 +1,19 @@
 import random
+from abc import ABC
 
 from design.nucleases import BaseCloningStrategy
 from design.nucleases import OligoDict
 from design.helpers import reverse_complement
 
 
-class GGAssembly(BaseCloningStrategy):
+class U6Plasmid(BaseCloningStrategy, ABC):
+
+    @classmethod
+    def can_express(cls, sequence):
+        return 'TTTT' not in sequence.upper()
+
+
+class GGAssembly(U6Plasmid):
     """Cloning as in Anzalone et al, 2019."""
 
     excel_oligo_headers = ['spacer_oligo_top', 'spacer_oligo_bottom', 'extension_oligo_top', 'extension_oligo_bottom']
@@ -74,7 +82,7 @@ class GGAssembly(BaseCloningStrategy):
         return cls.make_extension_oligos(extension_sequence, scaffold)
 
 
-class LibraryCloning(BaseCloningStrategy):
+class LibraryCloning(U6Plasmid):
     """Cloning for libraries."""
 
     can_design_primers = False
@@ -177,3 +185,171 @@ class LibraryCloning(BaseCloningStrategy):
                     alt_ext['oligos']['assembly'] = cls._update_barcodes(oligo, used_15mers, used_20mers)
 
             yield design
+
+
+class CFD3NS(BaseCloningStrategy):
+    """Drosophilia, Bosch et al 2021."""
+
+    excel_oligo_headers = ['spacer_oligo_top', 'spacer_oligo_bottom', 'extension_oligo_top', 'extension_oligo_bottom']
+    excel_extension_headers = ['top_oligo', 'bottom_oligo']
+
+    @classmethod
+    def help_text(cls, scaffold):
+        scaffold = cls.make_scaffold_oligos(scaffold)
+        return f"""Cloning as in [Bosch et al, 2021.](https://doi.org/10.1073/pnas.2021996118)
+
+        Golden Gate Assembly of spacer oligos, scaffold oligos, 
+        and extension oligos into [pCFD3-NS (Addgene #149545)](https://www.addgene.org/149545/).
+
+        Scaffold oligos:
+        * Top: {scaffold['top']}
+        * Bottom: {scaffold['bottom']}"""
+
+    @classmethod
+    def _spacer_to_cloning(cls, spacer_sequence: str) -> str:
+        spacer_sequence = spacer_sequence.upper()
+        #if not spacer_sequence.startswith('G'):
+        #    spacer_sequence = 'g' + spacer_sequence
+
+        return spacer_sequence
+
+    @classmethod
+    def make_scaffold_oligos(cls, scaffold: str) -> OligoDict:
+        return {
+            'top': scaffold[:-4],
+            'bottom': reverse_complement(scaffold[4:])
+        }
+
+    @classmethod
+    def make_spacer_oligos(cls, spacer_sequence: str, scaffold: str) -> OligoDict:
+        target = cls._spacer_to_cloning(spacer_sequence)
+        return {
+            'top': ''.join(['gtcg', target]),
+            'bottom': reverse_complement(target + scaffold[:4].lower())
+        }
+
+    @classmethod
+    def make_extension_oligos(cls, extension_sequence: str, scaffold: str) -> OligoDict:
+        return {
+            'top': scaffold[-4:].lower() + extension_sequence,
+            'bottom': reverse_complement(''.join([extension_sequence, 'tttt']))
+        }
+
+    @classmethod
+    def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
+        return {
+            'spacer': cls.make_spacer_oligos(spacer_sequence, scaffold),
+            #'scaffold': cls.make_scaffold_oligos(scaffold),
+            'extension': cls.make_extension_oligos(extension_sequence, scaffold),
+        }
+
+    @classmethod
+    def make_nicking_oligos(cls, spacer_sequence: str, scaffold: str):
+        target = cls._spacer_to_cloning(spacer_sequence)
+        return {
+            'top': 'gtgc' + target,
+            'bottom': reverse_complement(target + scaffold[:4].lower())
+        }
+
+    @classmethod
+    def alternate_extension(cls, extension_sequence: str, scaffold: str, **options):
+        return cls.make_extension_oligos(extension_sequence, scaffold)
+
+
+class OsU3(BaseCloningStrategy):
+    """Rice, Tang et al 2020."""
+
+    excel_oligo_headers = ['spacer_oligo_top', 'spacer_oligo_bottom', 'extension_oligo_top', 'extension_oligo_bottom']
+    excel_extension_headers = ['top_oligo', 'bottom_oligo']
+
+    @classmethod
+    def help_text(cls, scaffold):
+        scaffold = cls.make_scaffold_oligos(scaffold)
+        return f"""Cloning as in [Tang et al, 2020.](https://doi.org/10.1016/j.molp.2020.03.010)
+
+        Golden Gate Assembly of spacer oligos, scaffold oligos, 
+        and extension oligos into [pYPQ141D-peg (Addgene #141081)](https://www.addgene.org/141081/).
+
+        Scaffold oligos:
+        * Top: {scaffold['top']}
+        * Bottom: {scaffold['bottom']}"""
+
+    @classmethod
+    def _spacer_to_cloning(cls, spacer_sequence: str) -> str:
+        spacer_sequence = spacer_sequence.upper()
+        if not spacer_sequence.startswith('A'):
+            spacer_sequence = 'a' + spacer_sequence
+
+        return spacer_sequence
+
+    @classmethod
+    def make_scaffold_oligos(cls, scaffold: str) -> OligoDict:
+        return {
+            'top': scaffold[:-4],
+            'bottom': reverse_complement(scaffold[4:])
+        }
+
+    @classmethod
+    def make_spacer_oligos(cls, spacer_sequence: str, scaffold: str) -> OligoDict:
+        target = cls._spacer_to_cloning(spacer_sequence)
+        return {
+            'top': ''.join(['gtcg', target]),
+            'bottom': reverse_complement(target + scaffold[:4].lower())
+        }
+
+    @classmethod
+    def make_extension_oligos(cls, extension_sequence: str, scaffold: str) -> OligoDict:
+        return {
+            'top': scaffold[-4:].lower() + extension_sequence,
+            'bottom': reverse_complement(''.join([extension_sequence, 'tttt']))
+        }
+
+    @classmethod
+    def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
+        return {
+            'spacer': cls.make_spacer_oligos(spacer_sequence, scaffold),
+            #'scaffold': cls.make_scaffold_oligos(scaffold),
+            'extension': cls.make_extension_oligos(extension_sequence, scaffold),
+        }
+
+    @classmethod
+    def make_nicking_oligos(cls, spacer_sequence: str, scaffold: str):
+        target = cls._spacer_to_cloning(spacer_sequence)
+        return {
+            'top': 'gtgc' + target,
+            'bottom': reverse_complement(target + scaffold[:4].lower())
+        }
+
+    @classmethod
+    def alternate_extension(cls, extension_sequence: str, scaffold: str, **options):
+        return cls.make_extension_oligos(extension_sequence, scaffold)
+
+
+class Synthetic(BaseCloningStrategy):
+    """Just design pegRNA sequences eg. for synthetic pegRNAs"""
+
+    can_design_primers = False
+    can_design_nicking = False
+    excel_oligo_headers = ['pegRNA']
+    excel_extension_headers = ['pegRNA']
+    allow_extension_filtering = False
+
+    @classmethod
+    def help_text(cls, scaffold):
+        return f"""Just design pegRNA sequences eg. for synthetic pegRNAs."""
+
+    @classmethod
+    def _spacer_to_cloning(cls, spacer_sequence: str) -> str:
+        return spacer_sequence
+
+    @classmethod
+    def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
+        return {'pegRNA': ''.join([
+            spacer_sequence,
+            scaffold,
+            extension_sequence,
+        ])}
+
+    @classmethod
+    def alternate_extension(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
+        return cls.design_cloning(spacer_sequence, scaffold, extension_sequence, **options)

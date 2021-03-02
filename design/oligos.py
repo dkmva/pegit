@@ -49,6 +49,7 @@ class OligoSet:
         self.repair = repair
         self.cloning_strategy = self.nuclease.cloning_strategies[cloning_strategy]
         self.design_strategy = self.nuclease.design_strategies[design_strategy]
+        self.can_express = True
 
     @property
     def info(self):
@@ -117,6 +118,7 @@ class OligoSet:
                                                            downstream=downstream,
                                                            cut_dist=cut_dist,
                                                            **options)
+        self.can_express = self.cloning_strategy.can_express(self.spacer_sequence) and self.cloning_strategy.can_express(self.extension)
         #self.oligos['spacer'] = self.nuclease.make_spacer_oligos(self.spacer_sequence, self.scaffold)
         #self.oligos['scaffold'] = self.nuclease.make_scaffold_oligos(self.scaffold)
         #self.oligos['extension'] = self.nuclease.make_extension_oligos(self.extension, self.scaffold)
@@ -203,7 +205,6 @@ class OligoSet:
             self.tracker.number_of_alterations,
             strategy=self.cloning_strategy,
             **options)
-
         self.pbs_length = pbs_length
         self.rt_template_length = rt_template_length
         self.extension = extension
@@ -564,10 +565,18 @@ class AlterationTracker:
         """Make oligos for all selected spacers"""
         if not self.number_of_alterations:
             raise Exception('No DNA changes found')
-        oligo_sets = self.find_best_spacers(num_pegs, repair, nuclease, cloning_strategy, design_strategy, **options)
+        spacer_candidates = self.find_best_spacers(repair, nuclease, cloning_strategy, design_strategy, **options)
         degenerate_sequence = self.degenerate_sequence(strict=silence_pam == 'strict')
-        for oligo_set in oligo_sets:
+        c = 0
+        oligo_sets = []
+
+        for i, oligo_set in enumerate(spacer_candidates):
             oligo_set.make_oligos(degenerate_sequence, silence_pam, **options)
+            if oligo_set.can_express:
+                c += 1
+                oligo_sets.append(oligo_set)
+            if c >= num_pegs:
+                break
 
         # Visualisations for Detail view
         alterations = self.alterations
@@ -657,7 +666,7 @@ class AlterationTracker:
             'start': start,
         }
 
-    def find_best_spacers(self, num_pegs, repair=False, nuclease=None, cloning_strategy=None, design_strategy=None, **options):
+    def find_best_spacers(self, repair=False, nuclease=None, cloning_strategy=None, design_strategy=None, **options):
         """Find pegRNA spacers.
 
                 Required arguments:
@@ -682,12 +691,11 @@ class AlterationTracker:
         if repair:
             reference_sequence, altered_sequence = altered_sequence, reference_sequence
 
-        spacers = design_strategy.find_spacers(nuclease, reference_sequence, altered_sequence, position, position + self.alteration_length, **options)
-        n = min(num_pegs, len(spacers))
-        for i in range(n):
-            spacer = spacers[i]['spacer']
-            pos = spacers[i]['position']
-            strand = spacers[i]['strand']
+        spacers = design_strategy.find_spacers(nuclease, reference_sequence, altered_sequence, position, position + self.alteration_length, cloning_method=cloning_strategy, **options)
+        for sp in spacers:
+            spacer = sp['spacer']
+            pos = sp['position']
+            strand = sp['strand']
 
             if strand == -1:
                 pos = pos - len(spacer) + 1
@@ -697,10 +705,9 @@ class AlterationTracker:
                 visual_spacer = self.seq_from_original_coordinates(pos, pos + len(spacer))
             if strand == -1:
                 visual_spacer = reverse_complement(visual_spacer)
-            spacers[i]['visual_spacer'] = visual_spacer
+            sp['visual_spacer'] = visual_spacer
 
-        return [OligoSet(tracker=self, spacer=spacers[i], nuclease=nuclease, repair=repair, cloning_strategy=cloning_strategy)
-                for i in range(n)]
+        return [OligoSet(tracker=self, spacer=sp, nuclease=nuclease, repair=repair, cloning_strategy=cloning_strategy) for sp in spacers]
 
     def make_primers(self, product_min_size, product_max_size, primer_min_length, primer_max_length, primer_opt_length,
                      primer_min_tm, primer_max_tm, primer_opt_tm, **options):

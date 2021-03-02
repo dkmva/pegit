@@ -6,7 +6,7 @@ from design.helpers import reverse_complement, gc, dgn_to_regex
 class Anzalone:
 
     @staticmethod
-    def find_spacers(nuclease, reference_sequence, altered_sequence, start, end, spacer_search_range, **options):
+    def find_spacers(nuclease, reference_sequence, altered_sequence, start, end, spacer_search_range, cloning_method, **options):
         """Find candidate spacers for pegRNA selection.
 
         Finds all spacers with a cut site within spacer_search_range of the edit.
@@ -35,17 +35,17 @@ class Anzalone:
                                              regex.IGNORECASE)
             cut_site = pos + nuclease.cut_site_position - len(match.group('upstream'))
             distance = start - cut_site
+            if nuclease.get_cloning_strategy(cloning_method).can_express(spacer):
+                spacers.append({'spacer': spacer,
+                                'position': pos,
+                                'cut_site': cut_site,
+                                'strand': 1,
+                                'pam': (pam, pos + len(spacer)),
+                                'pam_disrupted': pam_disrupted,
+                                'distance': distance,
+                                })
 
-            spacers.append({'spacer': spacer,
-                            'position': pos,
-                            'cut_site': cut_site,
-                            'strand': 1,
-                            'pam': (pam, pos + len(spacer)),
-                            'pam_disrupted': pam_disrupted,
-                            'distance': distance,
-                            })
-
-            scoring_spacers.append(match.group().upper())
+                scoring_spacers.append(match.group().upper())
 
         for match in regex.finditer(nuclease.target_motif, antisense[
                                                       -spacer_search_range - nuclease.cut_site_position - nuclease.downstream_from_cut_site:],
@@ -58,17 +58,17 @@ class Anzalone:
                 pam) + 1 + nucleotide_difference:pos + 1 + nucleotide_difference - len(spacer)]), regex.IGNORECASE)
             cut_site = pos - nuclease.cut_site_position + len(match.group('upstream')) + 1
             distance = cut_site - end + max(0, nucleotide_difference)
+            if nuclease.get_cloning_strategy(cloning_method).can_express(spacer):
+                spacers.append({'spacer': spacer,
+                                'position': pos,
+                                'cut_site': cut_site,
+                                'strand': -1,
+                                'pam': (pam, pos - len(spacer) - len(pam) + 1 + nucleotide_difference),
+                                'pam_disrupted': pam_disrupted,
+                                'distance': distance,
+                                })
 
-            spacers.append({'spacer': spacer,
-                            'position': pos,
-                            'cut_site': cut_site,
-                            'strand': -1,
-                            'pam': (pam, pos - len(spacer) - len(pam) + 1 + nucleotide_difference),
-                            'pam_disrupted': pam_disrupted,
-                            'distance': distance,
-                            })
-
-            scoring_spacers.append(match.group().upper())
+                scoring_spacers.append(match.group().upper())
 
         for i, score in enumerate(nuclease.score_spacers(scoring_spacers)):
             spacers[i]['score'] = score
@@ -122,9 +122,9 @@ class Anzalone:
             info['kind'] = kind
             info['wt_score'] = wt_score
             info['offset'] = nuclease.cut_site_position - len(match.group('upstream'))
-
-            spacers.append(info)
-            scoring_spacers.append(match.group().upper())
+            if nuclease.get_cloning_strategy(cloning_method).can_express(spacer):
+                spacers.append(info)
+                scoring_spacers.append(match.group().upper())
 
         for i, score in enumerate(nuclease.score_spacers(scoring_spacers)):
             spacers[i]['score'] = score
@@ -143,14 +143,20 @@ class Anzalone:
         while pbs_length < pbs_max_length:
             pbs_length += 1
             pbs = reference[-pbs_length:]
+            if not nuclease.get_cloning_strategy(strategy).can_express(reverse_complement(pbs)):
+                continue
             if 0.4 <= gc(pbs) <= 0.6:
                 break
             lengths.append((abs(0.5 - gc(pbs)), len(pbs), pbs))
         else:
-            pbs = sorted(lengths, key=lambda x: x[:1])[0][2]
+            try:
+                pbs = sorted(lengths, key=lambda x: x[:1])[0][2]
+            except IndexError:
+                pbs = reference[-pbs_min_length:]
 
         # Create all possible PBS sequences within range limits.
         alt_lengths = [reference[-pbs_length:] for pbs_length in range(pbs_min_length, pbs_max_length + 1)]
+        alt_lengths = [seq for seq in alt_lengths if nuclease.get_cloning_strategy(strategy).can_express(reverse_complement(seq))]
         return pbs, alt_lengths
 
     @staticmethod
@@ -165,7 +171,7 @@ class Anzalone:
         while (nuclease._filter_extension(rt_template,
                                      strategy) or rt_template_length <= alteration_length * 2) and rt_template_length <= rt_max_length:
             rt_template += reference[to_position]
-            if not nuclease._filter_extension(rt_template, strategy):
+            if not nuclease._filter_extension(rt_template, strategy) and nuclease.get_cloning_strategy(strategy).can_express(reverse_complement(rt_template)):
                 last_valid = rt_template
             to_position += 1
             rt_template_length += 1
@@ -175,7 +181,7 @@ class Anzalone:
         lengths = []
         for rt_template_length in range(rt_min_length, rt_max_length + 1):
             template = reference[:cut_dist + rt_template_length + nucleotide_difference]
-            if not nuclease._filter_extension(template, strategy):
+            if not nuclease._filter_extension(template, strategy) and nuclease.get_cloning_strategy(strategy).can_express(reverse_complement(template)):
                 lengths.append(template)
         return rt_template, lengths
 
@@ -202,7 +208,6 @@ class Anzalone:
                                                   **options)
         rt, rt_lengths = cls._make_rt_sequence(nuclease, rt_reference, cut_dist, nucleotide_difference, alteration_length,
                                                rt_min_length, rt_max_length, strategy, **options)
-
         pbs_length = len(pbs)
         rt_length = len(rt)
 
