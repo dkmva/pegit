@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import pathlib
 import subprocess
@@ -50,9 +51,15 @@ def run_organism(namespace) -> None:
     edits = options.pop('edits')
     output_folder = options.pop('output_folder')
     job_name = options.pop('job_name')
+    nuclease = options.pop('nuclease')
+    nuclease_options = options.pop('nuclease_options')
+    cloning_strategy = options.pop('cloning_strategy')
+    cloning_options = options.pop('cloning_options')
     organism = Organism.objects.get(pk=organism)
 
-    j = Job(organism, options=options, job_id=job_name, job_name=job_name, output_folder=output_folder)
+    j = Job(organism, options=options, job_id=job_name, job_name=job_name, output_folder=output_folder,
+            nuclease=nuclease, nuclease_options=nuclease_options,
+            cloning_strategy=cloning_strategy, cloning_options=cloning_options)
     print('Parsing edit list')
     j.import_edit_list(edits)
     print('Designing oligos')
@@ -190,6 +197,10 @@ def main():
     organism_parser.add_argument('edits', help='Edit list')
     organism_parser.add_argument('--output_folder', help='Output folder', default=os.getcwd())
     organism_parser.add_argument('--job_name', help='Project name', default='pegIT')
+    organism_parser.add_argument('--nuclease', help='Nuclease', default='SpCas9')
+    organism_parser.add_argument('--cloning_strategy', help='Cloning plasmid', default='pegRNA-GG-acceptor')
+    organism_parser.add_argument('--nuclease_options', help='dictionary with nuclease options', type=json.loads)
+    organism_parser.add_argument('--cloning_options', help='dictionary with cloning options', type=json.loads)
     for opt, val in django.conf.settings.DESIGN_CONF['default_options'].items():
         organism_parser.add_argument(f'-{opt}', required=False, default=val)
 
