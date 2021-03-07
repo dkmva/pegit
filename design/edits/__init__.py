@@ -32,8 +32,17 @@ class AbstractEdit(abc.ABC):
         self.repair = 'repair' in options and options['repair'] == 'true'
         self.silence_pam = options.get('silence_pam', False)
         self.nuclease = options.get('nuclease', None)
+        self.nuclease_options = options.get('nuclease_options', None)
         self.design_primers = options.get('design_primers', True)
         self.cloning_strategy = options.get('cloning_strategy', None)
+        self.cloning_options = options.get('cloning_options', None)
+
+        if self.nuclease_options is None:
+            self.nuclease_options = {}
+
+        if self.cloning_options is None:
+            self.cloning_options = {}
+
         if self.silence_pam == 'false':
             self.silence_pam = False
         try:
@@ -68,7 +77,9 @@ class AbstractEdit(abc.ABC):
         return tracker.make_oligos(repair=self.repair, pbs_length=self.pbs_length,
                                    rt_template_length=self.rt_template_length, silence_pam=self.silence_pam,
                                    nuclease=self.nuclease, design_primers=self.design_primers,
-                                   cloning_strategy=self.cloning_strategy, **self.options)
+                                   cloning_strategy=self.cloning_strategy,
+                                   nuclease_options=self.nuclease_options,
+                                   cloning_options=self.cloning_options, **self.options)
 
     @staticmethod
     def parse_option_string(option_string):

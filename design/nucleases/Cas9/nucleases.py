@@ -1,6 +1,7 @@
 import os
 import abc
 from collections import defaultdict
+import distutils.util
 
 from Bio import SeqIO
 from django.utils.functional import classproperty
@@ -169,9 +170,17 @@ class SpCas9Base(Cas9, abc.ABC):
     default_scaffold = 'sgRNA'
     spacer_length = 20
 
+    _options = {
+        'remove extensions starting with C': (bool, True, None, 'SpCas9 pegRNA extensions that start with a C may be less efficient'),  # Filter out extensions that start with a C
+    }
+
     @classmethod
-    def filter_extension(cls, seq):
-        return seq.endswith('G')
+    def filter_extension(cls, seq, **options):
+        try:
+            remove_C = bool(distutils.util.strtobool(options['remove extensions starting with C']))
+        except KeyError:
+            remove_C = cls._options['remove extensions starting with C'][1]
+        return remove_C and seq.endswith('G')
 
 
 class SpCas9(SpCas9Base):

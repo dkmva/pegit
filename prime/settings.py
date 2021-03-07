@@ -149,6 +149,7 @@ REST_FRAMEWORK = {
 
     'JSON_UNDERSCOREIZE': {
         'no_underscore_before_number': True,
+        'ignore_fields': ('nuclease_options', 'cloning_options',),
     },
 }
 

@@ -1,5 +1,6 @@
 import random
 from abc import ABC
+import distutils.util
 
 from design.nucleases import BaseCloningStrategy
 from design.nucleases import OligoDict
@@ -8,9 +9,17 @@ from design.helpers import reverse_complement
 
 class U6Plasmid(BaseCloningStrategy, ABC):
 
+    _options = {
+        'remove pegRNAs with TTTT stretch': (bool, True, None, 'pegRNAs with >= 4 consecutive Ts may be have reduced expression from an U6 promoter'),
+    }
+
     @classmethod
-    def can_express(cls, sequence):
-        return 'TTTT' not in sequence.upper()
+    def can_express(cls, sequence, **options):
+        try:
+            remove_TTTT = bool(distutils.util.strtobool(options['remove pegRNAs with TTTT stretch']))
+        except KeyError:
+            remove_TTTT = cls._options['remove pegRNAs with TTTT stretch'][1]
+        return not (remove_TTTT and 'TTTT' in sequence.upper())
 
 
 class GGAssembly(U6Plasmid):
@@ -62,7 +71,7 @@ class GGAssembly(U6Plasmid):
         }
 
     @classmethod
-    def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
+    def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, cloning_options: dict, **options):
         return {
             'spacer': cls.make_spacer_oligos(spacer_sequence, scaffold),
             #'scaffold': cls.make_scaffold_oligos(scaffold),
@@ -78,7 +87,7 @@ class GGAssembly(U6Plasmid):
         }
 
     @classmethod
-    def alternate_extension(cls, extension_sequence: str, scaffold: str, **options):
+    def alternate_extension(cls, extension_sequence: str, scaffold: str, cloning_options: dict, **options):
         return cls.make_extension_oligos(extension_sequence, scaffold)
 
 
@@ -89,7 +98,11 @@ class LibraryCloning(U6Plasmid):
     can_design_nicking = False
     excel_oligo_headers = ['assembly_oligo']
     excel_extension_headers = ['assembly_oligo']
-    allow_extension_filtering = False
+
+    _options = {
+        **U6Plasmid._options,
+        'upstream': (str, 'atcttgtggaaaggacgaaacacc', '[ACGTacgt]+', 'Sequence upstream of the pegRNA spacer in oligo'),
+        'downstream': (str, 'aagcttggcgtaactagatc', '[ACGTacgt]+', 'Sequence downstream of target sequence in oligo')}
 
     @classmethod
     def help_text(cls, scaffold):
@@ -124,9 +137,9 @@ class LibraryCloning(U6Plasmid):
         return spacer_sequence
 
     @classmethod
-    def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
-        upstream = 'atcttgtggaaaggacgaaacacc'
-        downstream = 'aagcttggcgtaactagatc'
+    def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, cloning_options: dict, **options):
+        upstream = cloning_options.get('upstream', 'atcttgtggaaaggacgaaacacc')
+        downstream = cloning_options.get('downstream', 'aagcttggcgtaactagatc')
         barcode20 = 'YYYYYYYYYYYYYYYYYYYY'
         barcode15 = 'XXXXXXXXXXXXXXX'
         target = ''.join([options['upstream'][-20:], options['downstream'][:options['cut_dist'] + 30]])
@@ -146,8 +159,8 @@ class LibraryCloning(U6Plasmid):
         ])}
 
     @classmethod
-    def alternate_extension(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
-        return cls.design_cloning(spacer_sequence, scaffold, extension_sequence, **options)
+    def alternate_extension(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, cloning_options: dict, **options):
+        return cls.design_cloning(spacer_sequence, scaffold, extension_sequence, cloning_options, **options)
 
     @classmethod
     def generate_n_mer(cls, n):
@@ -236,7 +249,7 @@ class CFD3NS(BaseCloningStrategy):
         }
 
     @classmethod
-    def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
+    def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, cloning_options: dict, **options):
         return {
             'spacer': cls.make_spacer_oligos(spacer_sequence, scaffold),
             #'scaffold': cls.make_scaffold_oligos(scaffold),
@@ -252,8 +265,8 @@ class CFD3NS(BaseCloningStrategy):
         }
 
     @classmethod
-    def alternate_extension(cls, extension_sequence: str, scaffold: str, **options):
-        return cls.make_extension_oligos(extension_sequence, scaffold)
+    def alternate_extension(cls, extension_sequence: str, scaffold: str, cloning_options: dict, **options):
+        return cls.make_extension_oligos(extension_sequence, scaffold, cloning_options)
 
 
 class OsU3(BaseCloningStrategy):
@@ -321,8 +334,8 @@ class OsU3(BaseCloningStrategy):
         }
 
     @classmethod
-    def alternate_extension(cls, extension_sequence: str, scaffold: str, **options):
-        return cls.make_extension_oligos(extension_sequence, scaffold)
+    def alternate_extension(cls, extension_sequence: str, scaffold: str, cloning_options: dict, **options):
+        return cls.make_extension_oligos(extension_sequence, scaffold, )
 
 
 class Synthetic(BaseCloningStrategy):
@@ -332,7 +345,6 @@ class Synthetic(BaseCloningStrategy):
     can_design_nicking = False
     excel_oligo_headers = ['pegRNA']
     excel_extension_headers = ['pegRNA']
-    allow_extension_filtering = False
 
     @classmethod
     def help_text(cls, scaffold):
@@ -351,5 +363,5 @@ class Synthetic(BaseCloningStrategy):
         ])}
 
     @classmethod
-    def alternate_extension(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
+    def alternate_extension(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, cloning_options: dict, **options):
         return cls.design_cloning(spacer_sequence, scaffold, extension_sequence, **options)

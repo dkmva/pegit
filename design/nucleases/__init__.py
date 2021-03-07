@@ -32,6 +32,8 @@ class Nuclease(abc.ABC):
     _cloning_strategies: typing.Dict = dataclasses.field(default_factory=dict)
     _design_strategies: typing.Dict = dataclasses.field(default_factory=dict)
 
+    _options: typing.Dict = dataclasses.field(default_factory=dict)
+
     @classproperty
     def target_motif(cls):
         return cls._target_motif
@@ -112,15 +114,7 @@ class Nuclease(abc.ABC):
         """Should return True, if seq is a valid off target"""
 
     @classmethod
-    def filter_extension(cls, seq):
-        return False
-
-    @classmethod
-    def _filter_extension(cls, seq, strategy):
-        if isinstance(strategy, str):
-            strategy = cls.cloning_strategies[strategy]
-        if strategy.allow_extension_filtering:
-            return cls.filter_extension(seq)
+    def filter_extension(cls, seq, **options):
         return False
 
     @classmethod
@@ -129,13 +123,21 @@ class Nuclease(abc.ABC):
             strategy = cls.cloning_strategies[strategy]
         return strategy
 
+    @classproperty
+    def options(cls):
+        try:
+            return cls._options
+        except AttributeError:
+            return dict()
+
 
 @dataclasses.dataclass()
 class BaseCloningStrategy(abc.ABC):
 
     can_design_primers: bool = True
     can_design_nicking: bool = True
-    allow_extension_filtering: bool = True
+
+    _options: typing.Dict = dataclasses.field(default_factory=dict)
 
     @classmethod
     def _spacer_to_cloning(cls, spacer_sequence: str) -> str:
@@ -156,9 +158,19 @@ class BaseCloningStrategy(abc.ABC):
     def can_express(cls, sequence):
         return True
 
+    @classproperty
+    def options(cls):
+        try:
+            print(cls._options, 'here')
+            return cls._options
+        except AttributeError:
+            return dict()
+
 
 @dataclasses.dataclass()
 class BaseDesignStrategy(abc.ABC):
+
+    _options: typing.Dict = dataclasses.field(default_factory=dict)
 
     @classmethod
     @abc.abstractmethod
@@ -189,3 +201,10 @@ class BaseDesignStrategy(abc.ABC):
         pegRNA extension sequences consist of a PBS and a RT template.
         The PBS is upstream of the cut site. The RT template is downstream of the cut site and contains the edit sequence.
         """
+
+    @classproperty
+    def options(cls):
+        try:
+            return cls._options
+        except AttributeError:
+            return dict()

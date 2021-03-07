@@ -78,7 +78,9 @@ class Job:
     options: dict = dataclasses.field(default_factory=dict)
     job_name: str = 'pegIT'
     nuclease: str = dataclasses.field(default=None)
-    cloning_strategy: str = 'Library'  # None
+    nuclease_options: dict = dataclasses.field(default_factory=dict)
+    cloning_strategy: str = None
+    cloning_options: dict = dataclasses.field(default_factory=dict)
     status: JobStatus = JobStatus.QUEUED
     job_id: str = dataclasses.field(default_factory=make_uuid_string)
     edits: list = dataclasses.field(default_factory=list)
@@ -126,7 +128,7 @@ class Job:
     def save(self) -> None:
         os.makedirs(os.path.join(self.jobdir, 'excel_tmp'), exist_ok=True)
         with open(os.path.join(self.jobdir, 'summary.json'), 'w') as f:
-            d = camelize(JobSerializer(self).data)
+            d = camelize(JobSerializer(self).data, ignore_fields=('cloning_options', 'nuclease_options'))
             del d['organism']['scaffolds']
             json.dump(d, f, indent=4)
 
@@ -134,7 +136,7 @@ class Job:
     def load_from_disk(cls, job_id: str) -> Job:
         jobdir = os.path.join(django.conf.settings.DESIGN_OUTPUT_FOLDER, job_id)
         with open(os.path.join(jobdir, 'summary.json')) as f:
-            data = underscoreize(json.load(f), ignore_fields=['pegRNAs'])
+            data = underscoreize(json.load(f), ignore_fields=('pegRNAs', 'cloning_options', 'nuclease_options'))
             data['organism'] = Organism.objects.get(pk=data['organism']['id'])
             for s in data['summary']:
                 s['pegRNAs'] = s.pop('peg_rn_as')
@@ -360,10 +362,13 @@ class Job:
 
         try:
             edit, sequence_object, padding = EditSerializer.parse_edit_dict(edit_dict, self.organism.pk,
-                                                                            dict({'nuclease': self.nuclease,
-                                                                                  'cloning_strategy': self.cloning_strategy,
-                                                                                  'design_primers': self.design_primers},
-                                                                                 **self.options))
+                                                                            dict(
+                                                                                {'nuclease': self.nuclease,
+                                                                                 'nuclease_options': self.nuclease_options,
+                                                                                 'cloning_strategy': self.cloning_strategy,
+                                                                                 'cloning_options': self.cloning_options,
+                                                                                 'design_primers': self.design_primers
+                                                                                 }, **self.options))
             result.update(edit.create_oligos())
 
             if len(result['pegRNAs']) < 1:
@@ -398,9 +403,7 @@ class Job:
 
     def primer_specificity_check(self):
         all_primers = itertools.chain.from_iterable((result['primers'] for result in self.results))
-        all_primers = check_primer_specificity(all_primers, self.organism.assembly, os.path.join(
-            django.conf.settings.DESIGN_OUTPUT_FOLDER,
-            self.job_id), **self.options)
+        all_primers = check_primer_specificity(all_primers, self.organism.assembly, self.jobdir, **self.options)
 
         prevpair = 0
         count = 0
@@ -452,9 +455,7 @@ class Job:
             spacers[nuclease] = list(spacers[nuclease].keys())
             counts, binders = NUCLEASES[nuclease].find_off_targets(spacers[nuclease],
                                                                    self.organism.assembly,
-                                                                   os.path.join(
-                                                                       django.conf.settings.DESIGN_OUTPUT_FOLDER,
-                                                                       self.job_id))
+                                                                   self.jobdir)
             for i, result in enumerate(self.results):
                 for j, hits in enumerate(zip(counts, binders)):
                     for pegRNA in result['pegRNAs']:
@@ -467,36 +468,41 @@ class Job:
 
     def create_oligos(self):
         """Design pegRNAs for job edits. Saves to jobdir folder"""
-        try:
-            self.status = JobStatus.FINDING_PEGRNAS
-            self.warning = None
-            self.summary = []
+        #try:
+        self.status = JobStatus.FINDING_PEGRNAS
+        self.warning = None
+        self.summary = []
+        self.save()
+        for i in range(len(self.edits)):
+            self.summary.append(self.design_edit(i))
             self.save()
-            for i in range(len(self.edits)):
-                self.summary.append(self.design_edit(i))
+
+        nuclease = NUCLEASES[self.nuclease]
+        cloning_strategy = nuclease.cloning_strategies[self.cloning_strategy]
+        for i, res in enumerate(cloning_strategy.post_process(self.results)):
+            self.save_result(res, i)
+
+        if self.run_bowtie:
+            if self.design_primers:
+                self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
                 self.save()
+                self.primer_specificity_check()
 
-            if self.run_bowtie:
-                if self.design_primers:
-                    self.status = JobStatus.CHECKING_PRIMER_SPECIFICITY
-                    self.save()
-                    self.primer_specificity_check()
-
-                self.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
-                self.save()
-                self.sgrna_specificity_check()
-
-            self.status = JobStatus.EXPORTING_EXCEL
+            self.status = JobStatus.CHECKING_SGRNA_SPECIFICITY
             self.save()
-            self.export_excel()
-            self.status = JobStatus.COMPLETED_STATUS
-            self.save()
-        except Exception as e:
-            self.status = JobStatus.FAILED_STATUS
-            self.warning = f'An unknown error occurred, {repr(e)}'
-            self.save()
+            self.sgrna_specificity_check()
 
-            return e
+        self.status = JobStatus.EXPORTING_EXCEL
+        self.save()
+        self.export_excel()
+        self.status = JobStatus.COMPLETED_STATUS
+        self.save()
+        #except Exception as e:
+        #    self.status = JobStatus.FAILED_STATUS
+        #    self.warning = f'An unknown error occurred, {repr(e)}'
+        #    self.save()
+
+        #    return e
 
 
 class JobSerializer(serializers.Serializer):
@@ -508,7 +514,9 @@ class JobSerializer(serializers.Serializer):
     edits = serializers.ListField(child=serializers.DictField(child=serializers.CharField()))
     options = serializers.DictField(child=serializers.IntegerField())
     nuclease = serializers.CharField(required=False)
+    nuclease_options = serializers.DictField(child=serializers.CharField())
     cloning_strategy = serializers.CharField(required=False)
+    cloning_options = serializers.DictField(child=serializers.CharField())
     warning = serializers.CharField()
     run_bowtie = serializers.BooleanField()
     design_primers = serializers.BooleanField()

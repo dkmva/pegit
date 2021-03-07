@@ -218,7 +218,6 @@ def run_bowtie(query, assembly):
     for line in iter(p.stdout.readline, ''):
         yield line
     p.stdout.close()
-    #return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
 
 def run_bowtie_multi(queries, assembly):
@@ -227,7 +226,6 @@ def run_bowtie_multi(queries, assembly):
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
     for line in iter(p.stdout.readline, ''):
         yield line
-    #return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
 
 def run_bowtie_pairs(pair1, pair2, assembly, product_min_size, product_max_size, **options):
@@ -238,8 +236,6 @@ def run_bowtie_pairs(pair1, pair2, assembly, product_min_size, product_max_size,
 
     for line in iter(p.stdout.readline, ''):
         yield line
-
-    #return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 
 
 def run_primer3(sequence, start, length, product_min_size, product_max_size, primer_min_length, primer_max_length, primer_opt_length, primer_min_tm, primer_max_tm, primer_opt_tm, **options):

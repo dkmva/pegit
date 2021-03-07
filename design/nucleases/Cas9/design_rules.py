@@ -6,12 +6,13 @@ from design.helpers import reverse_complement, gc, dgn_to_regex
 class Anzalone:
 
     @staticmethod
-    def find_spacers(nuclease, reference_sequence, altered_sequence, start, end, spacer_search_range, cloning_method, **options):
+    def find_spacers(nuclease, reference_sequence, altered_sequence, start, end, spacer_search_range, cloning_method, cloning_options, **options):
         """Find candidate spacers for pegRNA selection.
 
         Finds all spacers with a cut site within spacer_search_range of the edit.
         Sorts spacers according to pam disruption, distance to edit and score.
         """
+        cloning_method = nuclease.get_cloning_strategy(cloning_method)
         spacers = []
         scoring_spacers = []
         sense = reference_sequence[:start + nuclease.downstream_from_cut_site]
@@ -35,7 +36,7 @@ class Anzalone:
                                              regex.IGNORECASE)
             cut_site = pos + nuclease.cut_site_position - len(match.group('upstream'))
             distance = start - cut_site
-            if nuclease.get_cloning_strategy(cloning_method).can_express(spacer):
+            if cloning_method.can_express(spacer, **cloning_options):
                 spacers.append({'spacer': spacer,
                                 'position': pos,
                                 'cut_site': cut_site,
@@ -58,7 +59,7 @@ class Anzalone:
                 pam) + 1 + nucleotide_difference:pos + 1 + nucleotide_difference - len(spacer)]), regex.IGNORECASE)
             cut_site = pos - nuclease.cut_site_position + len(match.group('upstream')) + 1
             distance = cut_site - end + max(0, nucleotide_difference)
-            if nuclease.get_cloning_strategy(cloning_method).can_express(spacer):
+            if cloning_method.can_express(spacer, **cloning_options):
                 spacers.append({'spacer': spacer,
                                 'position': pos,
                                 'cut_site': cut_site,
@@ -77,8 +78,9 @@ class Anzalone:
 
     @staticmethod
     def find_nicking_spacers(nuclease, reference_sequence, altered_sequence, spacer_strand, cut_site, scaffold,
-                             nicking_range, cloning_method, **options):
+                             nicking_range, cloning_method, cloning_options, **options):
         """Find spacers for nicking the opposite strand."""
+        cloning_method = nuclease.get_cloning_strategy(cloning_method)
         spacers = []
         scoring_spacers = []
 
@@ -122,7 +124,7 @@ class Anzalone:
             info['kind'] = kind
             info['wt_score'] = wt_score
             info['offset'] = nuclease.cut_site_position - len(match.group('upstream'))
-            if nuclease.get_cloning_strategy(cloning_method).can_express(spacer):
+            if cloning_method.can_express(spacer, **cloning_options):
                 spacers.append(info)
                 scoring_spacers.append(match.group().upper())
 
@@ -132,18 +134,19 @@ class Anzalone:
         return sorted(spacers, key=lambda x: (x['wt_score'], not (abs(x['position']) > 50), -x['score']))
 
     @staticmethod
-    def _make_pbs_sequence(nuclease, reference, pbs_min_length, pbs_max_length, strategy, **options):
+    def _make_pbs_sequence(nuclease, reference, pbs_min_length, pbs_max_length, cloning_strategy, cloning_options, **options):
         """Find a suggested PBS length, and generate all possible PBS candidate lengths.
 
         Selects the shortest PBS sequence with a GC content in the range [0.4,0.6].
         If no sequence is within this range, selects the shortest PBS with a GC content closest to 0.5.
         """
+        cloning_strategy = nuclease.get_cloning_strategy(cloning_strategy)
         pbs_length = pbs_min_length - 1
         lengths = []
         while pbs_length < pbs_max_length:
             pbs_length += 1
             pbs = reference[-pbs_length:]
-            if not nuclease.get_cloning_strategy(strategy).can_express(reverse_complement(pbs)):
+            if not cloning_strategy.can_express(reverse_complement(pbs), **cloning_options):
                 continue
             if 0.4 <= gc(pbs) <= 0.6:
                 break
@@ -156,22 +159,23 @@ class Anzalone:
 
         # Create all possible PBS sequences within range limits.
         alt_lengths = [reference[-pbs_length:] for pbs_length in range(pbs_min_length, pbs_max_length + 1)]
-        alt_lengths = [seq for seq in alt_lengths if nuclease.get_cloning_strategy(strategy).can_express(reverse_complement(seq))]
+        alt_lengths = [seq for seq in alt_lengths if cloning_strategy.can_express(reverse_complement(seq), **cloning_options)]
         return pbs, alt_lengths
 
     @staticmethod
     def _make_rt_sequence(nuclease, reference, cut_dist, nucleotide_difference, alteration_length, rt_min_length,
-                          rt_max_length, strategy, **options):
+                          rt_max_length, cloning_strategy, cloning_options, nuclease_options, **options):
         """Find a suggested RT template length, and generate alterniative RT template lengths."""
+        cloning_strategy = nuclease.get_cloning_strategy(cloning_strategy)
         rt_template_length = rt_min_length
         to_position = cut_dist + rt_template_length + nucleotide_difference
         rt_template = reference[:to_position]
         last_valid = rt_template
         # For large alterations, longer template is probably preferred
-        while (nuclease._filter_extension(rt_template,
-                                     strategy) or rt_template_length <= alteration_length * 2) and rt_template_length <= rt_max_length:
+        while (nuclease.filter_extension(rt_template, **nuclease_options)
+               or rt_template_length <= alteration_length * 2) and rt_template_length <= rt_max_length:
             rt_template += reference[to_position]
-            if not nuclease._filter_extension(rt_template, strategy) and nuclease.get_cloning_strategy(strategy).can_express(reverse_complement(rt_template)):
+            if not nuclease.filter_extension(rt_template, **nuclease_options) and cloning_strategy.can_express(reverse_complement(rt_template), **cloning_options):
                 last_valid = rt_template
             to_position += 1
             rt_template_length += 1
@@ -181,14 +185,14 @@ class Anzalone:
         lengths = []
         for rt_template_length in range(rt_min_length, rt_max_length + 1):
             template = reference[:cut_dist + rt_template_length + nucleotide_difference]
-            if not nuclease._filter_extension(template, strategy) and nuclease.get_cloning_strategy(strategy).can_express(reverse_complement(template)):
+            if not nuclease.filter_extension(template, **nuclease_options) and cloning_strategy.can_express(reverse_complement(template), **cloning_options):
                 lengths.append(template)
         return rt_template, lengths
 
     @classmethod
     def make_extension_sequence(cls, nuclease, reference_sequence, altered_sequence, spacer_strand, spacer_cut_site, cut_dist,
                                 alteration_length, pbs_min_length, pbs_max_length, rt_min_length, rt_max_length,
-                                strategy,
+                                cloning_strategy, cloning_options, nuclease_options,
                                 **options):
         """Create the pegRNA extension sequence.
 
@@ -204,10 +208,10 @@ class Anzalone:
         else:
             pbs_reference = reverse_complement(reference_sequence[spacer_cut_site:])
             rt_reference = reverse_complement(altered_sequence[:spacer_cut_site + nucleotide_difference])
-        pbs, pbs_lengths = cls._make_pbs_sequence(nuclease, pbs_reference.upper(), pbs_min_length, pbs_max_length, strategy,
-                                                  **options)
+        pbs, pbs_lengths = cls._make_pbs_sequence(nuclease, pbs_reference.upper(), pbs_min_length, pbs_max_length,
+                                                  cloning_strategy, cloning_options, **options)
         rt, rt_lengths = cls._make_rt_sequence(nuclease, rt_reference, cut_dist, nucleotide_difference, alteration_length,
-                                               rt_min_length, rt_max_length, strategy, **options)
+                                               rt_min_length, rt_max_length, cloning_strategy, cloning_options, nuclease_options, **options)
         pbs_length = len(pbs)
         rt_length = len(rt)
 

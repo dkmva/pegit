@@ -247,6 +247,7 @@ class NucleaseSerializer(serializers.Serializer):
     scaffolds = serializers.DictField(child=serializers.CharField())
     cloning_strategies = serializers.SerializerMethodField()
     docstring = serializers.SerializerMethodField()
+    options = serializers.SerializerMethodField()
 
     @staticmethod
     def remove_indent(string):
@@ -260,4 +261,29 @@ class NucleaseSerializer(serializers.Serializer):
         return self.remove_indent(obj.__doc__)
 
     def get_cloning_strategies(self, obj):
-        return [(k, self.remove_indent(v.help_text(obj.scaffolds[obj.default_scaffold]))) for k, v in obj.cloning_strategies.items()]
+        return [(k,
+                 self.remove_indent(v.help_text(obj.scaffolds[obj.default_scaffold])),
+                 {k2: self.opt2dict(v2) for k2, v2 in v.options.items()}) for k, v in obj.cloning_strategies.items()]
+
+    @staticmethod
+    def type2html(typ):
+        if type(typ[2]) is list:
+            return 'select'
+        if typ[0].__name__ == 'str':
+            return 'text'
+        if typ[0].__name__ == 'int':
+            return 'number'
+        if typ[0].__name__ == 'bool':
+            return 'checkbox'
+        return typ
+
+    def opt2dict(self, opt):
+        return {
+            'type': self.type2html(opt),
+            'value': opt[1],
+            'pattern': opt[2],
+            'help': opt[3],
+        }
+
+    def get_options(self, obj):
+        return {k: self.opt2dict(v) for k, v in obj.options.items()}
