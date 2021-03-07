@@ -150,6 +150,9 @@ def add_organism_folder(namespace) -> None:
     scaffolds = _make_2bit_and_scaffold_list(fasta, assembly)
     _make_bowtie(fasta, assembly)
 
+    with open(scaffolds) as f:
+        scaffolds = f.read()
+
     Organism.add_to_database(**conf, file_path=gff, scaffolds=scaffolds)
 
 
