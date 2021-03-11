@@ -343,8 +343,8 @@ class Synthetic(BaseCloningStrategy):
 
     can_design_primers = False
     can_design_nicking = False
-    excel_oligo_headers = ['pegRNA']
-    excel_extension_headers = ['pegRNA']
+    excel_oligo_headers = ['pegrna_oligo']
+    excel_extension_headers = ['pegrna_oligo']
 
     @classmethod
     def help_text(cls, scaffold):
@@ -356,7 +356,7 @@ class Synthetic(BaseCloningStrategy):
 
     @classmethod
     def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
-        return {'pegRNA': ''.join([
+        return {'pegrna': ''.join([
             spacer_sequence,
             scaffold,
             extension_sequence,
