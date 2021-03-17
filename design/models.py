@@ -93,9 +93,16 @@ class Organism(models.Model):
                             source=record['source']
                         ))
                 myprint('insert genes')
+                gene_dict = {}
                 genes = Gene.objects.bulk_create(genes, batch_size=batch_size)
-                genes = Gene.objects.filter(gene_id__in=[g.gene_id for g in genes], organism=organism)
-                genes = {gene.gene_id: gene for gene in genes}
+                x = 0
+                for i in range(x, len(genes), batch_size):
+                    x = i
+                    for gene in Gene.objects.filter(gene_id__in=[g.gene_id for g in genes[x:x + batch_size]],
+                                                    organism=organism):
+                        gene_dict[gene.gene_id] = gene
+
+                genes = gene_dict
                 for record in parse_gff_file(file_path, disable=silent):
                     attributes = record['attributes']
                     if record['type'] == 'transcript':
@@ -109,10 +116,16 @@ class Organism(models.Model):
                             source=record['source']
                         ))
                 myprint('insert transcripts')
+                transcript_dict = {}
                 transcripts = Transcript.objects.bulk_create(transcripts, batch_size=batch_size)
-                transcripts = Transcript.objects.filter(transcript_id__in=[t.transcript_id for t in transcripts],
-                                                        gene__organism=organism)
-                transcripts = {transcript.transcript_id: transcript for transcript in transcripts}
+                x = 0
+                for i in range(x, len(transcripts), batch_size):
+                    x = i
+                    for transcript in Transcript.objects.filter(
+                            transcript_id__in=[t.transcript_id for t in transcripts[x:x + batch_size]],
+                            gene__organism=organism):
+                        transcript_dict[transcript.transcript_id] = transcript
+                transcripts = transcript_dict
                 for record in parse_gff_file(file_path, disable=silent):
                     attributes = record['attributes']
                     if record['type'] == 'exon':
@@ -155,9 +168,15 @@ class Organism(models.Model):
                         ))
 
                 myprint('insert genes')
+                gene_dict = {}
                 genes = Gene.objects.bulk_create(genes, batch_size=batch_size)
-                genes = Gene.objects.filter(gene_id__in=[g.gene_id for g in genes], organism=organism)
-                genes = {gene.gene_id: gene for gene in genes}
+                x = 0
+                for i in range(x, len(genes), batch_size):
+                    x = i
+                    for gene in Gene.objects.filter(gene_id__in=[g.gene_id for g in genes[x:x+batch_size]], organism=organism):
+                        gene_dict[gene.gene_id] = gene
+
+                genes = gene_dict
 
                 for record in parse_gff_file(file_path, disable=silent):
                     attributes = record['attributes']
@@ -180,10 +199,15 @@ class Organism(models.Model):
                         ))
 
                 myprint('insert transcripts')
+                transcript_dict = {}
                 transcripts = Transcript.objects.bulk_create(transcripts, batch_size=batch_size)
-                transcripts = Transcript.objects.filter(transcript_id__in=[t.transcript_id for t in transcripts],
-                                                        gene__organism=organism)
-                transcripts = {transcript.transcript_id: transcript for transcript in transcripts}
+                x = 0
+                for i in range(x, len(transcripts), batch_size):
+                    x = i
+                    for transcript in Transcript.objects.filter(transcript_id__in=[t.transcript_id for t in transcripts[x:x+batch_size]],
+                                                        gene__organism=organism):
+                        transcript_dict[transcript.transcript_id] = transcript
+                transcripts = transcript_dict
 
                 for record in parse_gff_file(file_path, disable=silent):
                     attributes = record['attributes']
@@ -246,9 +270,16 @@ class Organism(models.Model):
                             ))
 
                 myprint('insert genes')
+                gene_dict = {}
                 genes = Gene.objects.bulk_create(genes, batch_size=batch_size)
-                genes = Gene.objects.filter(gene_id__in=[g.gene_id for g in genes], organism=organism)
-                genes = {gene.gene_id: gene for gene in genes}
+                x = 0
+                for i in range(x, len(genes), batch_size):
+                    x = i
+                    for gene in Gene.objects.filter(gene_id__in=[g.gene_id for g in genes[x:x + batch_size]],
+                                                    organism=organism):
+                        gene_dict[gene.gene_id] = gene
+
+                genes = gene_dict
 
                 for record in parse_gff_file(file_path, disable=silent):
                     attributes = record['attributes']
@@ -272,10 +303,16 @@ class Organism(models.Model):
                         ))
 
                 myprint('insert transcripts')
+                transcript_dict = {}
                 transcripts = Transcript.objects.bulk_create(transcripts, batch_size=batch_size)
-                transcripts = Transcript.objects.filter(transcript_id__in=[t.transcript_id for t in transcripts],
-                                                        gene__organism=organism)
-                transcripts = {transcript.transcript_id: transcript for transcript in transcripts}
+                x = 0
+                for i in range(x, len(transcripts), batch_size):
+                    x = i
+                    for transcript in Transcript.objects.filter(
+                            transcript_id__in=[t.transcript_id for t in transcripts[x:x + batch_size]],
+                            gene__organism=organism):
+                        transcript_dict[transcript.transcript_id] = transcript
+                transcripts = transcript_dict
 
                 for record in parse_gff_file(file_path, disable=silent):
                     attributes = record['attributes']

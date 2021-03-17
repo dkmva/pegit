@@ -55,11 +55,14 @@ def run_organism(namespace) -> None:
     nuclease_options = options.pop('nuclease_options')
     cloning_strategy = options.pop('cloning_strategy')
     cloning_options = options.pop('cloning_options')
+    run_bowtie = options.pop('run_bowtie')
+    design_primers = options.pop('design_primers')
     organism = Organism.objects.get(pk=organism)
 
     j = Job(organism, options=options, job_id=job_name, job_name=job_name, output_folder=output_folder,
             nuclease=nuclease, nuclease_options=nuclease_options,
-            cloning_strategy=cloning_strategy, cloning_options=cloning_options)
+            cloning_strategy=cloning_strategy, cloning_options=cloning_options,
+            run_bowtie=run_bowtie, design_primers=design_primers)
     print('Parsing edit list')
     j.import_edit_list(edits)
     print('Designing oligos')
@@ -74,8 +77,17 @@ def run_clinvar(namespace) -> None:
     edits = options.pop('edits')
     output_folder = options.pop('output_folder')
     job_name = options.pop('job_name')
+    nuclease = options.pop('nuclease')
+    nuclease_options = options.pop('nuclease_options')
+    cloning_strategy = options.pop('cloning_strategy')
+    cloning_options = options.pop('cloning_options')
+    run_bowtie = options.pop('run_bowtie')
+    design_primers = options.pop('design_primers')
 
-    j = Job(organism, options=options, job_id=job_name, job_name=job_name, output_folder=output_folder)
+    j = Job(organism, options=options, job_id=job_name, job_name=job_name, output_folder=output_folder,
+            nuclease=nuclease, nuclease_options=nuclease_options,
+            cloning_strategy=cloning_strategy, cloning_options=cloning_options,
+            run_bowtie=run_bowtie, design_primers=design_primers)
     print('Parsing edit list')
     j.import_clinvar_list(edits)
     print('Designing oligos')
@@ -153,7 +165,7 @@ def add_organism_folder(namespace) -> None:
     with open(scaffolds) as f:
         scaffolds = f.read()
 
-    Organism.add_to_database(**conf, file_path=gff, scaffolds=scaffolds)
+    Organism.add_to_database(**conf, file_path=gff, scaffolds='scaffolds')
 
 
 def main():
@@ -204,6 +216,12 @@ def main():
     organism_parser.add_argument('--cloning_strategy', help='Cloning plasmid', default='pegRNA-GG-acceptor')
     organism_parser.add_argument('--nuclease_options', help='dictionary with nuclease options', type=json.loads)
     organism_parser.add_argument('--cloning_options', help='dictionary with cloning options', type=json.loads)
+    parser.add_argument('--run_bowtie', dest='run_bowtie', action='store_true')
+    parser.add_argument('--no_run_bowtie', dest='run_bowtie', action='store_false')
+    parser.set_defaults(run_bowtie=True)
+    parser.add_argument('--design_primers', dest='design_primers', action='store_true')
+    parser.add_argument('--no_design_primers', dest='design_primers', action='store_false')
+    parser.set_defaults(design_primers=True)
     for opt, val in django.conf.settings.DESIGN_CONF['default_options'].items():
         organism_parser.add_argument(f'-{opt}', required=False, default=val)
 
@@ -213,6 +231,16 @@ def main():
     clinvar_parser.add_argument('edits', help='Edit list')
     clinvar_parser.add_argument('--output_folder', help='Output folder', default=os.getcwd())
     clinvar_parser.add_argument('--job_name', help='Project name', default='pegIT')
+    organism_parser.add_argument('--nuclease', help='Nuclease', default='SpCas9')
+    organism_parser.add_argument('--cloning_strategy', help='Cloning plasmid', default='pegRNA-GG-acceptor')
+    organism_parser.add_argument('--nuclease_options', help='dictionary with nuclease options', type=json.loads)
+    organism_parser.add_argument('--cloning_options', help='dictionary with cloning options', type=json.loads)
+    parser.add_argument('--run_bowtie', dest='run_bowtie', action='store_true')
+    parser.add_argument('--no_run_bowtie', dest='run_bowtie', action='store_false')
+    parser.set_defaults(run_bowtie=True)
+    parser.add_argument('--design_primers', dest='design_primers', action='store_true')
+    parser.add_argument('--no_design_primers', dest='design_primers', action='store_false')
+    parser.set_defaults(design_primers=True)
     for opt, val in django.conf.settings.DESIGN_CONF['default_options'].items():
         clinvar_parser.add_argument(f'-{opt}', required=False, default=val)
 
