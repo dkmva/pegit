@@ -194,9 +194,13 @@ class JobViewSet(viewsets.ViewSet):
 
         organism = Organism.objects.get(assembly=django.conf.settings.DESIGN_CLINVAR_ORGANISM)
         advanced_options = request.data.get('advanced_options', None)
+        nuclease_options = request.data.get('nuclease_options', None)
+        cloning_options = request.data.get('cloning_options', None)
         nuclease = request.data.get('nuclease', None)
         cloning_strategy = request.data.get('cloning_strategy', None)
-        j = Job(organism, options=advanced_options, nuclease=nuclease, cloning_strategy=cloning_strategy)
+        run_bowtie = request.data.get('run_bowtie', True)
+        design_primers = request.data.get('design_primers', True)
+        j = Job(organism, options=advanced_options, cloning_options=cloning_options, nuclease_options=nuclease_options, nuclease=nuclease, cloning_strategy=cloning_strategy, run_bowtie=run_bowtie, design_primers=design_primers)
         j.edits = j.clinvar2edit(edits)
         j.save()
 
