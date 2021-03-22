@@ -161,7 +161,6 @@ class BaseCloningStrategy(abc.ABC):
     @classproperty
     def options(cls):
         try:
-            print(cls._options, 'here')
             return cls._options
         except AttributeError:
             return dict()

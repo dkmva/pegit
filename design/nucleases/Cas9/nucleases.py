@@ -177,7 +177,7 @@ class SpCas9Base(Cas9, abc.ABC):
     @classmethod
     def filter_extension(cls, seq, **options):
         try:
-            remove_C = bool(distutils.util.strtobool(options['remove extensions starting with C']))
+            remove_C = bool(distutils.util.strtobool(str(options['remove extensions starting with C'])))
         except KeyError:
             remove_C = cls._options['remove extensions starting with C'][1]
         return remove_C and seq.endswith('G')

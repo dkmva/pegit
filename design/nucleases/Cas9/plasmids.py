@@ -16,7 +16,7 @@ class U6Plasmid(BaseCloningStrategy, ABC):
     @classmethod
     def can_express(cls, sequence, **options):
         try:
-            remove_TTTT = bool(distutils.util.strtobool(options['remove pegRNAs with TTTT stretch']))
+            remove_TTTT = bool(distutils.util.strtobool(str(options['remove pegRNAs with TTTT stretch'])))
         except KeyError:
             remove_TTTT = cls._options['remove pegRNAs with TTTT stretch'][1]
         return not (remove_TTTT and 'TTTT' in sequence.upper())
