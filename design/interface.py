@@ -14,6 +14,7 @@ import celery
 from celery.exceptions import SoftTimeLimitExceeded
 import django
 from djangorestframework_camel_case.util import camelize, underscoreize
+import regex as re
 from rest_framework import serializers
 import pandas as pd
 
@@ -182,8 +183,7 @@ class Job:
                 repair = edit['options'].split('=')[1]
                 f.write(f'{clinvar_id}\t{repair}\n')
 
-    @staticmethod
-    def clinvar2edit(clinvar_list: typing.List[dict]) -> list:
+    def clinvar2edit(self, clinvar_list: typing.List[dict], naming='accession') -> list:
         """Convert a list of clinvar edits to regular edits"""
         ids = [e['clinvar_id'].replace('VCV', '') for e in clinvar_list]
         repair = [e['repair'] for e in clinvar_list]
@@ -198,12 +198,20 @@ class Job:
             except (ValueError, KeyError):
                 print(f'Could not find/parse Canonical SPDI, line {i}')
                 continue
+            position = int(position) - 1
+            parsed_position = position
+            start = 0
+            if position > 1000:
+                parsed_position = 1001
+                start = position - 1000
+
+            ref = self.organism.extract_sequence(chromosome, start, position + 1000)[0]
 
             edit_dict = {
-                'sequence_type': 'genomic',
-                'sequence': chromosome,
+                'sequence_type': 'custom',
+                'sequence': f'{record[naming]},{ref}',
                 'edit': 'Substitution',
-                'options': f'from={from_},to={to_},position={int(position)+1}'
+                'options': f'from={from_},to={to_},position={int(parsed_position)+1}'
             }
             if repair[i] == 'true':
                 edit_dict['options'] += ',repair=true'

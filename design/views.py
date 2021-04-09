@@ -192,7 +192,7 @@ class JobViewSet(viewsets.ViewSet):
     def clinvar(self, request, *args, **kwargs):
         edits = request.data.get('edits', None)
 
-        organism = Organism.objects.get(assembly=django.conf.settings.DESIGN_CLINVAR_ORGANISM)
+        organism = Organism.objects.filter(assembly=django.conf.settings.DESIGN_CLINVAR_ORGANISM).first()
         advanced_options = request.data.get('advanced_options', None)
         nuclease_options = request.data.get('nuclease_options', None)
         cloning_options = request.data.get('cloning_options', None)
