@@ -221,6 +221,9 @@ class Job:
 
     def export_excel(self) -> None:
         """Export jobdata to excel"""
+
+        cloning_strategy = NUCLEASES[self.nuclease].cloning_strategies[self.cloning_strategy]
+
         writer = pd.ExcelWriter(os.path.join(self.jobdir, f'{self.job_name}.xlsx'), engine='xlsxwriter',
                                 options=dict(constant_memory=True, tmpdir=os.path.join(self.jobdir, 'excel_tmp')))
         wb = writer.book
@@ -229,26 +232,43 @@ class Job:
         writer.sheets['Summary'] = ws
 
         # SUMMARY
+        summary_column_widths = defaultdict(lambda: 0)
         organism = OrganismSerializer(self.organism).data
-        del organism['scaffolds']
 
         ws.write('A1', 'Organism', heading)
+        ws.write('A2', 'Name')
+        ws.write('B2', organism['name'])
+        ws.write('A3', 'Source')
+        ws.write('B3', organism['source'])
 
-        pd.DataFrame([organism]).to_excel(writer, 'Summary', index=False, startrow=1)
-        ws = wb.get_worksheet_by_name('Summary')
-        ws.write('A5', 'Options', heading)
-        pd.DataFrame([self.options]).to_excel(writer, 'Summary', index=False, startrow=5)
+        summary_start_row = 5
+
+        for title, opt in (('Options', self.options),
+                    ('Nuclease options', self.nuclease_options),
+                    ('Cloning options', self.cloning_options)):
+            if opt:
+                ws.write(f'A{summary_start_row}', title, heading)
+                df = pd.DataFrame([self.options])
+                df.to_excel(writer, 'Summary', index=False, startrow=summary_start_row)
+                for col_idx, column in enumerate(df):
+                    column_length = max(df[column].astype(str).map(len).max(), len(column))
+                    summary_column_widths[col_idx] = max(column_length, summary_column_widths[col_idx])
+                summary_start_row += 3
 
         summary = pd.DataFrame(self.summary)
-        ws.write('A8', 'Edits', heading)
-        summary.to_excel(writer, 'Summary', index=False, startrow=8)
+        del summary['best']
+        ws.write(f'A{summary_start_row}', 'Edits', heading)
+        summary.to_excel(writer, 'Summary', index=False, startrow=summary_start_row)
+        for col_idx, column in enumerate(summary):
+            column_length = max(summary[column].astype(str).map(len).max(), len(column))
+            summary_column_widths[col_idx] = max(column_length, summary_column_widths[col_idx])
 
         summary_pegrnas = []
         summary_primers = []
 
         pegRNA_header = ['#pegRNA', 'spacer', 'score', 'pam_disrupted', 'pam_silenced', 'distance', 'strand',
-                         'nuclease', 'pbs_length', 'rt_template_length', 'pbs', 'rt_template', 'offtargets'] + \
-                        NUCLEASES[self.nuclease].cloning_strategies[self.cloning_strategy].excel_oligo_headers
+                         'nuclease', 'pbs_length', 'rt_template_length', 'pbs', 'rt_template', 'offtargets', 'pegRNA', 'nsgRNA']\
+                        + cloning_strategy.excel_oligo_headers
 
         # EDITS
         for i, result in enumerate(self.results, 1):
@@ -262,6 +282,8 @@ class Job:
             all_alternate = []
             for j, p in enumerate(pegRNAs):
                 p['#pegRNA'] = j+1
+                p['pegRNA'] = p['pegrna']
+                p['nsgRNA'] = ''
                 try:
                     p['offtargets'] = ','.join(str(e) for e in p['offtargets'][0])
                 except KeyError:
@@ -273,30 +295,29 @@ class Job:
                             p[f'{k}_oligo_{k2}'] = oligos[k][k2]
                     else:
                         p[f'{k}_oligo'] = oligos[k]
-                #p['spacer_oligo_top'] = oligos['spacer']['top']
-                #p['spacer_oligo_bottom'] = oligos['spacer']['bottom']
-                #p['extension_oligo_top'] = oligos['extension']['top']
-                #p['extension_oligo_bottom'] = oligos['extension']['bottom']
+
                 nicking = p.pop('nicking')
                 alternate_extensions = p.pop('alternate_extensions')
                 pegRNAs[j] = {k: p[k] for k in pegRNA_header}
-                if NUCLEASES[self.nuclease].cloning_strategies[self.cloning_strategy].can_design_nicking:
+                if cloning_strategy.can_design_nicking:
                     try:
-                        pegRNAs[j]['nsgRNA_oligo_top'] = nicking[0]['top']
-                        pegRNAs[j]['nsgRNA_oligo_bottom'] = nicking[0]['bottom']
+                        for k, v in zip(cloning_strategy.excel_nicking_headers, nicking[0].keys()):
+                            pegRNAs[j][k] = nicking[0][v]
+                        pegRNAs[j]['nsgRNA'] = nicking[0]['spacer']
                     except IndexError:
-                        pegRNAs[j]['nsgRNA_oligo_top'] = ''
-                        pegRNAs[j]['nsgRNA_oligo_bottom'] = ''
+                        for k, v in cloning_strategy.excel_nicking_headers:
+                            pegRNAs[j][k] = ''
                     for n in nicking:
                         n['#pegRNA'] = j + 1
                         try:
                             n['offtargets'] = ','.join(str(e) for e in n['offtargets'][0])
                         except KeyError:
                             n['offtargets'] = 'unknown'
-                        n['oligo_top'] = n['top']
-                        n['oligo_bottom'] = n['bottom']
-                        n = {k: n[k] for k in ['#pegRNA', 'kind', 'position', 'spacer', 'score', 'wt_score', 'offtargets',
-                                                 'oligo_top', 'oligo_bottom']}
+                        for k, v in zip(cloning_strategy.excel_nicking_headers, list(nicking[0].keys())):
+                            n[k] = nicking[0][v]
+
+                        n = {k: n[k] for k in ['#pegRNA', 'kind', 'position', 'spacer', 'score', 'wt_score', 'offtargets'] \
+                                                 + cloning_strategy.excel_nicking_headers}
                         all_nicking.append(n)
 
                 for ext in alternate_extensions:
@@ -304,11 +325,10 @@ class Job:
                     ext['#pegRNA'] = j + 1
                     for k, v in oligos.items():
                         ext[f'{k}_oligo'] = v
-                    #ext['oligo_top'] = oligos['top']
-                    #ext['oligo_bottom'] = oligos['bottom']
+
                     ext = {k: ext[k] for k in ['#pegRNA', 'pbs_length', 'rt_template_length', 'sequence', 'pbs_gc',
                                                'rt_gc'] +
-                           NUCLEASES[self.nuclease].cloning_strategies[self.cloning_strategy].excel_extension_headers}
+                           cloning_strategy.excel_extension_headers}
                     all_alternate.append(ext)
 
             primers = [p['primers'] for p in result['primers']]
@@ -320,33 +340,45 @@ class Job:
                         d[f'{k}_{kk}'] = p[k][kk]
                 all_primers.append(d)
                 if j == 0:
-                    summary_dict = {'#Edit': i, 'left_sequence': '', 'right_sequence': ''}
+                    summary_dict = {'#Edit': i, 'LEFT_SEQUENCE': '', 'RIGHT_SEQUENCE': ''}
                     summary_dict.update({k: d[k] for k in sorted(d, key=lambda x: (x.startswith('p'), x.startswith('r')))})
                     summary_primers.append(summary_dict)
 
             start_row = 1
+
+            column_widths = defaultdict(lambda: 0)
 
             ws = wb.add_worksheet(wsname)
             writer.sheets[wsname] = ws
             for j, df in enumerate([pegRNAs, all_nicking, all_primers, all_alternate]):
                 ws.write(f'A{start_row}', ['pegRNAs', 'nsgRNAs', 'primers', 'alternate extensions'][j], heading)
                 df = pd.DataFrame(df)
+                for col_idx, column in enumerate(df):
+                    column_length = max(df[column].astype(str).map(len).max(), len(column))
+                    column_widths[col_idx] = max(column_length, column_widths[col_idx])
                 df.to_excel(writer, wsname, index=False, startrow=start_row)
                 start_row += len(df.index) + 3
             summary_dict = {'#Edit': i}
             summary_dict.update(pegRNAs[0])
             del summary_dict["#pegRNA"]
             summary_pegrnas.append(summary_dict)
+            for col_idx, column_length in column_widths.items():
+                writer.sheets[wsname].set_column(col_idx, col_idx, column_length + 3)
             ws._opt_close()
 
-        start_row = 8
         ws = wb.get_worksheet_by_name('Summary')
-        start_row += len(summary.index) + 3
-        ws.write(f'A{start_row}', 'pegRNAs', heading)
-        pd.DataFrame(summary_pegrnas).to_excel(writer, 'Summary', index=False, startrow=start_row)
-        start_row += len(summary_pegrnas) + 3
-        ws.write(f'A{start_row}', 'Primers', heading)
-        pd.DataFrame(summary_primers).to_excel(writer, 'Summary', index=False, startrow=start_row)
+        summary_start_row += len(summary.index) + 3
+        for title, table in (('pegRNAs', summary_pegrnas), ('Primers', summary_primers)):
+            ws.write(f'A{summary_start_row}', title, heading)
+            df = pd.DataFrame(table)
+            df.to_excel(writer, 'Summary', index=False, startrow=summary_start_row)
+            for col_idx, column in enumerate(df):
+                column_length = max(df[column].astype(str).map(len).max(), len(column))
+                summary_column_widths[col_idx] = max(column_length, summary_column_widths[col_idx])
+            summary_start_row += len(table) + 3
+
+        for col_idx, column_length in summary_column_widths.items():
+            writer.sheets['Summary'].set_column(col_idx, col_idx, column_length + 3)
         writer.save()
 
         self.excel_exported = True
@@ -401,12 +433,13 @@ class Job:
         finally:
             self.save_result(result, i)
             return {
-                'sequence': result['sequence'],
+                'sequence': result['sequence'] if sequence_type != 'custom' else result['sequence'].split(',')[0],
                 'sequence_type': sequence_type,
                 'edit': edit.__class__.__name__,
                 'options': options,
                 'pegRNAs': len(result['pegRNAs']),
-                'warning': result['warning']
+                'warning': result['warning'],
+                'best': json.dumps(result['pegRNAs'][0]),
             }
 
     def primer_specificity_check(self):

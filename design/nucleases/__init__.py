@@ -130,6 +130,11 @@ class Nuclease(abc.ABC):
         except AttributeError:
             return dict()
 
+    @classmethod
+    @abc.abstractmethod
+    def make_full_pegrna(cls, spacer, scaffold, extension):
+        return
+
 
 @dataclasses.dataclass()
 class BaseCloningStrategy(abc.ABC):

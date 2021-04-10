@@ -78,6 +78,7 @@ class OligoSet:
             'alternate_extensions': self.alternate_extensions,
             'pbs': self.pbs,
             'rt_template': self.rt_template,
+            'pegrna': self.nuclease.make_full_pegrna(self.spacer_sequence, self.scaffold, self.extension)
         }
         return info
 
@@ -126,18 +127,20 @@ class OligoSet:
                                                            cloning_options=self.cloning_options,
                                                            **options)
         self.can_express = self.cloning_strategy.can_express(self.spacer_sequence, **self.cloning_options) and self.cloning_strategy.can_express(self.extension, **self.cloning_options)
-        #self.oligos['spacer'] = self.nuclease.make_spacer_oligos(self.spacer_sequence, self.scaffold)
-        #self.oligos['scaffold'] = self.nuclease.make_scaffold_oligos(self.scaffold)
-        #self.oligos['extension'] = self.nuclease.make_extension_oligos(self.extension, self.scaffold)
+
+        extensions = []
         for extension in self.alternate_extensions:
-            extension['oligos'] = self.cloning_strategy.alternate_extension(spacer_sequence=self.spacer_sequence,
-                                                                            scaffold=self.scaffold,
-                                                                            extension_sequence=extension['sequence'],
-                                                                            upstream=upstream,
-                                                                            downstream=downstream,
-                                                                            cut_dist=cut_dist,
-                                                                            cloning_options=self.cloning_options,
-                                                                            **options)
+            if self.cloning_strategy.can_express(extension['sequence'], **self.cloning_options):
+                extension['oligos'] = self.cloning_strategy.alternate_extension(spacer_sequence=self.spacer_sequence,
+                                                                                scaffold=self.scaffold,
+                                                                                extension_sequence=extension['sequence'],
+                                                                                upstream=upstream,
+                                                                                downstream=downstream,
+                                                                                cut_dist=cut_dist,
+                                                                                cloning_options=self.cloning_options,
+                                                                                **options)
+                extensions.append(extension)
+        self.alternate_extensions = extensions
 
         if self.repair:
             reference_sequence, altered_sequence = altered_sequence, reference_sequence

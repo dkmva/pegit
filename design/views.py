@@ -142,7 +142,7 @@ class JobViewSet(viewsets.ViewSet):
     def download(self, request, pk, *args, **kwargs):
         jobdir = os.path.join(django.conf.settings.DESIGN_OUTPUT_FOLDER, pk)
         xlsxfile = [e for e in os.listdir(jobdir) if e.endswith('xlsx')][0]
-        return FileResponse(open(os.path.join(jobdir, xlsxfile), 'rb'))
+        return FileResponse(open(os.path.join(jobdir, xlsxfile), 'rb'), filename=f'pegIT {pk}.xlsx')
 
     @action(detail=True, methods=['GET'])
     def queue_position(self, request, pk, *args, **kwargs):

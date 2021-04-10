@@ -50,6 +50,10 @@ class Cas9(Nuclease, abc.ABC):
         return 1
 
     @classmethod
+    def make_full_pegrna(cls, spacer, scaffold, extension):
+        return ''.join([spacer, scaffold, extension])
+
+    @classmethod
     def find_off_targets(cls, spacer_sequences, assembly, write_folder):
         """Find off targets for a list of spacer sequences."""
         mm_pattern = regex.compile(r'(?P<position>\d+):(?P<to>\w)>(?P<from>\w)')

@@ -27,6 +27,7 @@ class GGAssembly(U6Plasmid):
 
     excel_oligo_headers = ['spacer_oligo_top', 'spacer_oligo_bottom', 'extension_oligo_top', 'extension_oligo_bottom']
     excel_extension_headers = ['top_oligo', 'bottom_oligo']
+    excel_nicking_headers = ['nsgRNA_oligo_top', 'nsgRNA_oligo_bottom']
 
     @classmethod
     def help_text(cls, scaffold):
@@ -205,6 +206,7 @@ class CFD3NS(BaseCloningStrategy):
 
     excel_oligo_headers = ['spacer_oligo_top', 'spacer_oligo_bottom', 'extension_oligo_top', 'extension_oligo_bottom']
     excel_extension_headers = ['top_oligo', 'bottom_oligo']
+    excel_nicking_headers = ['nsgRNA_oligo_top', 'nsgRNA_oligo_bottom']
 
     @classmethod
     def help_text(cls, scaffold):
@@ -274,6 +276,7 @@ class OsU3(BaseCloningStrategy):
 
     excel_oligo_headers = ['spacer_oligo_top', 'spacer_oligo_bottom', 'extension_oligo_top', 'extension_oligo_bottom']
     excel_extension_headers = ['top_oligo', 'bottom_oligo']
+    excel_nicking_headers = ['nsgRNA_oligo_top', 'nsgRNA_oligo_bottom']
 
     @classmethod
     def help_text(cls, scaffold):
@@ -341,10 +344,9 @@ class OsU3(BaseCloningStrategy):
 class Synthetic(BaseCloningStrategy):
     """Just design pegRNA sequences eg. for synthetic pegRNAs"""
 
-    can_design_primers = False
-    can_design_nicking = False
-    excel_oligo_headers = ['pegrna_oligo']
-    excel_extension_headers = ['pegrna_oligo']
+    excel_oligo_headers = []
+    excel_extension_headers = []
+    excel_nicking_headers = ['nsgRNA']
 
     @classmethod
     def help_text(cls, scaffold):
@@ -355,12 +357,14 @@ class Synthetic(BaseCloningStrategy):
         return spacer_sequence
 
     @classmethod
+    def make_nicking_oligos(cls, spacer_sequence: str, scaffold: str):
+        return {
+            'nsgRNA': spacer_sequence
+        }
+
+    @classmethod
     def design_cloning(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, **options):
-        return {'pegrna': ''.join([
-            spacer_sequence,
-            scaffold,
-            extension_sequence,
-        ])}
+        return {}
 
     @classmethod
     def alternate_extension(cls, spacer_sequence: str, scaffold: str, extension_sequence: str, cloning_options: dict, **options):
