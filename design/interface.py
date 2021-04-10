@@ -29,6 +29,9 @@ from design.serializers import OrganismSerializer, EditSerializer
 from pandas.io.formats.excel import ExcelFormatter, ExcelCell
 
 
+DESIGN_EDIT_GROUP_SIZE = 5
+
+
 def write_excel_by_rows(self, coloffset: int):
     if self.styler is None:
         styles = None
@@ -593,11 +596,12 @@ def create_oligos_background(job_id: str) -> None:
 
 
 @celery.shared_task()
-def design_edit_background(indices: list, job_id: str):
+def design_edit_background(edit_index: list, job_id: str):
+    #print(indices, job_id)
     job = Job.load_from_disk(job_id)
     results = []
-    for edit_index in indices:
-        results.append(job.design_edit(edit_index))
+    #for edit_index in indices:
+    results.append(job.design_edit(edit_index))
     return results
 
 
@@ -679,13 +683,27 @@ def create_oligos_chain(job_id: str):
     job.status = JobStatus.QUEUED
     job.save()
 
+    edit_dict = job.edits[0].copy()
+    edit_dict.update({'organism': job.organism.id})
+
+    edit, sequence_object, padding = EditSerializer.parse_edit_dict(edit_dict, job.organism.id,
+                                                                    dict(
+                                                                        {'nuclease': job.nuclease,
+                                                                         'nuclease_options': job.nuclease_options,
+                                                                         'cloning_strategy': job.cloning_strategy,
+                                                                         'cloning_options': job.cloning_options,
+                                                                         'design_primers': job.design_primers
+                                                                         }, **job.options))
+    edit_dict['sequence_object'] = SequenceObjectSerializer(sequence_object).data
+    job.save_result(edit_dict, 0)
+
     indices = list(range(len(job.edits)))
-    n = 10
+    n = DESIGN_EDIT_GROUP_SIZE
     indices = [indices[i * n:(i + 1) * n] for i in range((len(indices) + n - 1) // n )]
-    edits = [(i, job_id) for i in indices]
 
     results = init_job.si(job_id)
-    results = results | celery.group([design_edit_background.si(*e) for e in edits]) | update_summary.s(job_id)
+    for idx in indices:
+        results = results | celery.group([design_edit_background.si(i, job_id) for i in idx]) | update_summary.s(job_id)
     results = results | post_process_job_background.si(job_id)
     if job.run_bowtie and len(job.edits) <= django.conf.settings.DESIGN_MAX_EDITS_BOWTIE:
         if job.design_primers and NUCLEASES[job.nuclease].cloning_strategies[job.cloning_strategy].can_design_primers:

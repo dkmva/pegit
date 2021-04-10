@@ -16,7 +16,7 @@ from design import EDITS, NUCLEASES
 from design.serializers import EditSerializer, GeneSerializer, GeneListSerializer, NucleaseSerializer,\
     OrganismSerializer, TranscriptSerializer
 from design.models import Organism, Gene, Transcript
-from design.interface import Job, JobSerializer, create_oligos_chain
+from design.interface import Job, JobSerializer, create_oligos_chain, DESIGN_EDIT_GROUP_SIZE
 
 Entrez.email = django.conf.settings.DESIGN_ENTREZ_EMAIL
 
@@ -161,9 +161,9 @@ class JobViewSet(viewsets.ViewSet):
             try:
                 tasks = conn.default_channel.client.lrange('design_queue', 0, -1)
                 j = Job.load_from_disk(pk)
-                length = len(j.edits) // 10
+                length = len(j.edits) // DESIGN_EDIT_GROUP_SIZE
                 count = [eval(json.loads(t)['headers']['argsrepr'])[1] for t in tasks].count(pk)
-                if len(j.edits) % 10:
+                if len(j.edits) % DESIGN_EDIT_GROUP_SIZE:
                     length += 1
                 return Response({'percent': (length - count) / length * 100})
             except (ValueError, IndexError):
