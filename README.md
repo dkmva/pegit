@@ -43,7 +43,7 @@ Move the 2bit file to the 2bit folder `DESIGN_TWO_BIT_TO_FA_PATH`. Move the bowt
 
 #### Running pegIT:
 
-pegIT can be run as a command-line tool or a web-tool. To launch the web-tool, run `python manage.py runserver`, the tool can now be accessed at http://localhost:8000. In web-tool mode, pegit creates oligos in the background, in a separate shell run `python manage.py celery`, to launch celery for processing jobs in the background.
+pegIT can be run as a command-line tool or a web-tool. To launch the web-tool, run `python manage.py runserver --insecure`, the tool can now be accessed at http://localhost:8000. In web-tool mode, pegit creates oligos in the background, in a separate shell run `python manage.py celery`, to launch celery for processing jobs in the background.
 
 
 To run the command-line version, run `python pegIT.py`
