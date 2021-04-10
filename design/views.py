@@ -179,9 +179,13 @@ class JobViewSet(viewsets.ViewSet):
         cloning_strategy = request.data.get('cloning_strategy', None)
         run_bowtie = request.data.get('run_bowtie', True)
         design_primers = request.data.get('design_primers', True)
+        job_name = request.data.get('job_name', '')
+        if not job_name:
+            job_name = 'pegIT'
         organism = Organism.objects.get(pk=pk)
-        j = Job(organism, options=advanced_options, cloning_options=cloning_options, nuclease_options=nuclease_options, edits=edits, nuclease=nuclease, cloning_strategy=cloning_strategy,
-                run_bowtie=run_bowtie, design_primers=design_primers)
+        j = Job(organism, options=advanced_options, cloning_options=cloning_options, nuclease_options=nuclease_options,
+                edits=edits, nuclease=nuclease, cloning_strategy=cloning_strategy,
+                run_bowtie=run_bowtie, design_primers=design_primers, job_name=job_name)
         j.save()
 
         create_oligos_chain(j.job_id)
@@ -200,7 +204,12 @@ class JobViewSet(viewsets.ViewSet):
         cloning_strategy = request.data.get('cloning_strategy', None)
         run_bowtie = request.data.get('run_bowtie', True)
         design_primers = request.data.get('design_primers', True)
-        j = Job(organism, options=advanced_options, cloning_options=cloning_options, nuclease_options=nuclease_options, nuclease=nuclease, cloning_strategy=cloning_strategy, run_bowtie=run_bowtie, design_primers=design_primers)
+        job_name = request.data.get('job_name', '')
+        if not job_name:
+            job_name = 'pegIT'
+        j = Job(organism, options=advanced_options, cloning_options=cloning_options, nuclease_options=nuclease_options,
+                nuclease=nuclease, cloning_strategy=cloning_strategy, run_bowtie=run_bowtie, design_primers=design_primers,
+                job_name=job_name)
         j.edits = j.clinvar2edit(edits)
         j.save()
 
