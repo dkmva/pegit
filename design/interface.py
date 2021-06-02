@@ -435,6 +435,9 @@ class Job:
 
         finally:
             self.save_result(result, i)
+            best = None
+            if len(result['pegRNAs']) > 0:
+                best = json.dumps(result['pegRNAs'][0])
             return {
                 'sequence': result['sequence'] if sequence_type != 'custom' else result['sequence'].split(',')[0],
                 'sequence_type': sequence_type,
@@ -442,7 +445,7 @@ class Job:
                 'options': options,
                 'pegRNAs': len(result['pegRNAs']),
                 'warning': result['warning'],
-                'best': json.dumps(result['pegRNAs'][0]),
+                'best': best,
             }
 
     def primer_specificity_check(self):
