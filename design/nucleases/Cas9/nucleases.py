@@ -1,8 +1,10 @@
 import os
 import abc
+import subprocess
 from collections import defaultdict
 import distutils.util
 
+import django
 from Bio import SeqIO
 from django.utils.functional import classproperty
 import numpy
@@ -11,7 +13,7 @@ import regex
 import azimuth3.model_comparison
 import CFD
 
-from design.helpers import reverse_complement, extract_sequences, run_bowtie_multi, complement, dgn_to_regex
+from design.helpers import complement, dgn_to_regex
 from .. import Nuclease
 from .plasmids import GGAssembly, LibraryCloning, Synthetic
 from .design_rules import Anzalone
@@ -57,7 +59,6 @@ class Cas9(Nuclease, abc.ABC):
     def find_off_targets(cls, spacer_sequences, assembly, write_folder):
         """Find off targets for a list of spacer sequences."""
         mm_pattern = regex.compile(r'(?P<position>\d+):(?P<to>\w)>(?P<from>\w)')
-        spacer_len = len(spacer_sequences[0])
         counts = []
         binders = []
 
@@ -65,99 +66,45 @@ class Cas9(Nuclease, abc.ABC):
             counts.append([0] * 4)
             binders.append([])
 
-        match_to = {
-            'strand': {}, 'mismatches': defaultdict(dict), 'mismatched_seq': {}, 'position': {}, 'scaffold': {}
-        }
-
-        in_file = os.path.join(write_folder, 'extract_sequences_in')
-        out_file = os.path.join(write_folder, 'extract_sequences_out')
         spacers_file = os.path.join(write_folder, 'spacers')
 
         with open(spacers_file, 'w') as f:
             for spacer in spacer_sequences:
-                f.write(f'{spacer}\n')
+                f.write(f'{spacer}{"N"*len(cls.pam_motif)}\n')
 
         # Run bowtie on the spacer sequences and parse output for extracting spacer and PAM from 2bit file
-        bowtie_out = run_bowtie_multi(spacers_file, assembly)
-        parsed = False
-        # with open(bowtie_out) as bt:
-        f = open(in_file, 'w')
-        for i, line in enumerate(bowtie_out):
-            parsed = False
+        cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -n 3 -l {cls.spacer_length} -e {(3 + len(cls.pam_motif))*30} -a --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 5,6,7 -r {spacers_file} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}"
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+        for i, line in enumerate(iter(p.stdout.readline, '')):
             line = line.strip('\n')
             index, strand, scaffold, position, mismatches = line.split('\t')
             position = int(position)
             index = int(index)
             mismatches = regex.findall(mm_pattern, mismatches)
-
-            match = list(spacer_sequences[index].upper())
+            match = list(spacer_sequences[index].upper()) + ['N'] * len(cls.pam_motif)
             if strand == '+':
-                position_string = f'{scaffold}:{position}-{position + spacer_len + len(cls.pam_motif)}'
                 for mm in mismatches:
                     match[int(mm[0])] = mm[1].lower()
             else:
-                if (position - len(cls.pam_motif)) < 0:
-                    continue
-                position_string = f'{scaffold}:{position - len(cls.pam_motif)}-{position + spacer_len}'
+                position += len(cls.pam_motif)
                 for mm in mismatches:
                     match[int(mm[0])] = complement(mm[1].lower())
-            f.write(f'{position_string}\n')
             match = ''.join(match)
 
-            match_to['strand'][position_string] = strand
-            match_to['mismatches'][position_string][index] = len(mismatches)
-            match_to['position'][position_string] = position
-            match_to['scaffold'][position_string] = scaffold
-            match_to['mismatched_seq'][position_string] = match
+            spacer, pam = match[:-len(cls.pam_motif)], match[-len(cls.pam_motif):]
+            pam = pam.upper()
 
-            if (i + 1) % 100000 == 0:
-                f.close()
-                # Get the sequences from 2bit file, filter out hits without a potential PAM
-                extracted_sequences = SeqIO.parse(extract_sequences(in_file, assembly, out_file), 'fasta')
-                for record in extracted_sequences:
-                    strand = match_to['strand'][record.name]
-                    seq = str(record.seq)
-                    if strand == '-':
-                        seq = reverse_complement(seq)
-                    if not cls._filter_offtarget(seq):
-                        continue
-                    # Only first 20 hits are returned, all hits are counted.
-                    for idx in match_to['mismatches'][record.name].keys():
-                        counts[idx][match_to['mismatches'][record.name][idx]] += 1
-                        if len(binders[idx]) < 20:
-                            binders[idx].append(
-                                {'off target site': match_to['mismatched_seq'][record.name],
-                                 'pam': seq[-len(cls.pam_motif):].upper(),
-                                 'chr': match_to['scaffold'][record.name],
-                                 'position': match_to['position'][record.name],
-                                 'strand': strand, 'mismatches': match_to['mismatches'][record.name][idx]})
-                match_to = {
-                    'strand': {}, 'mismatches': defaultdict(dict), 'mismatched_seq': {}, 'position': {},
-                    'scaffold': {}
-                }
-                parsed = True
-                f = open(in_file, 'w')
-
-        f.close()
-        if not parsed:
-            extracted_sequences = SeqIO.parse(extract_sequences(in_file, assembly, out_file), 'fasta')
-            for record in extracted_sequences:
-                strand = match_to['strand'][record.name]
-                seq = str(record.seq)
-                if strand == '-':
-                    seq = reverse_complement(seq)
-                if not cls._filter_offtarget(seq):
-                    continue
-                # Only first 20 hits are returned, all hits are counted.
-                for idx in match_to['mismatches'][record.name].keys():
-                    counts[idx][match_to['mismatches'][record.name][idx]] += 1
-                    if len(binders[idx]) < 20:
-                        binders[idx].append(
-                            {'off target site': match_to['mismatched_seq'][record.name],
-                             'pam': seq[-len(cls.pam_motif):].upper(),
-                             'chr': match_to['scaffold'][record.name],
-                             'position': match_to['position'][record.name],
-                             'strand': strand, 'mismatches': match_to['mismatches'][record.name][idx]})
+            if cls._filter_offtarget(pam):
+                mm_count = len(mismatches) - len(cls.pam_motif)
+                counts[index][mm_count] += 1
+                if len(binders[index]) < 20:
+                    binders[index].append({
+                        'off target site': spacer,
+                        'pam': pam,
+                        'chr': scaffold,
+                        'position': position,
+                        'strand': strand,
+                        'mismatches': mm_count})
 
         return counts, binders
 
@@ -232,7 +179,7 @@ class SpCas9NG(SpCas9Base):
 
     @classmethod
     def _filter_offtarget(cls, seq):
-        return seq[-2] != 'G'
+        return seq[-2] == 'G'
 
 
 class SaCas9(Cas9):

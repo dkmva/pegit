@@ -308,7 +308,7 @@ class Job:
                             pegRNAs[j][k] = nicking[0][v]
                         pegRNAs[j]['nsgRNA'] = nicking[0]['spacer']
                     except IndexError:
-                        for k, v in cloning_strategy.excel_nicking_headers:
+                        for k in cloning_strategy.excel_nicking_headers:
                             pegRNAs[j][k] = ''
                     for n in nicking:
                         n['#pegRNA'] = j + 1

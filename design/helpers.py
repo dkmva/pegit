@@ -211,23 +211,6 @@ def extract_sequences(seqlist, assembly, outfile):
     return outfile
 
 
-def run_bowtie(query, assembly):
-    """Align a single sequence with bowtie."""
-    cmd = f'{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -a --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 1,5,6,7 -c {query} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}'
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
-    for line in iter(p.stdout.readline, ''):
-        yield line
-    p.stdout.close()
-
-
-def run_bowtie_multi(queries, assembly):
-    """Align a list of sequences with bowtie."""
-    cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -a --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 5,6,7 -r {queries} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}"
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
-    for line in iter(p.stdout.readline, ''):
-        yield line
-
-
 def run_bowtie_pairs(pair1, pair2, assembly, product_min_size, product_max_size, **options):
     """Pairwise alignment of two lists of sequences using bowtie."""
     cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -v 3 -k 50 --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 2,6,7 -r -1 {pair1} -2 {pair2} -I {int(product_min_size/3)} -X {int(product_max_size*3)} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}"
