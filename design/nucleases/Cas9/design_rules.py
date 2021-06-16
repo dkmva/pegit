@@ -99,7 +99,8 @@ class Anzalone:
               min(len(reference_sequence), cut_site + nuclease.downstream_from_cut_site + nicking_range - nt_difference)
               ].upper()
 
-        cut_site = nuclease.cut_site_position + nicking_range
+        if cut_site - nuclease.cut_site_position - nicking_range > 0:
+            cut_site = nuclease.cut_site_position + nicking_range
 
         for match in regex.finditer(nuclease.target_motif, sequence, regex.IGNORECASE, overlapped=True):
             spacer = match.group('spacer')
