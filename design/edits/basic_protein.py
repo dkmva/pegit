@@ -197,7 +197,7 @@ class TagProtein(AminoAcidAlteration):
 
     ###### Options:
     * *tag (select)*: Select a tag from the list.
-    * *position (int / C / N)*: Position of the tag. N-terminal or C-terminal or position of insertion.
+    * *position (int / C / N)*: Amino Acid position of the tag. N-terminal or C-terminal or position of insertion.
 
     Available tags:
     * 5xHIS: HHHHH,
@@ -240,7 +240,10 @@ class TagProtein(AminoAcidAlteration):
                 position = len(sequence_object.translation)
             else:
                 raise ValueError(f"Invalid position {position}. Allowed values are, C, N or a number.")
-
+        if position < 0:
+            raise ValueError("Position cannot be negative")
+        if position > len(sequence_object.translation):
+            raise ValueError(f"Invalid position {position}. Position cannot be higher than the length of the protein: {len(sequence_object.translation)}.")
         if tag not in cls.tags.keys():
             raise ValueError(f"Invalid tag: {tag}. Tag must be one of: '{','.join(cls.tags.keys())}'")
 
