@@ -175,7 +175,10 @@ class Anzalone:
         # For large alterations, longer template is probably preferred
         while (nuclease.filter_extension(rt_template, **nuclease_options)
                or rt_template_length <= alteration_length * 2) and rt_template_length <= rt_max_length:
-            rt_template += reference[to_position]
+            try:
+                rt_template += reference[to_position]
+            except IndexError:
+                break
             if not nuclease.filter_extension(rt_template, **nuclease_options) and cloning_strategy.can_express(reverse_complement(rt_template), **cloning_options):
                 last_valid = rt_template
             to_position += 1
