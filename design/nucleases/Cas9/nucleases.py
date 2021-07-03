@@ -1,11 +1,9 @@
 import os
 import abc
 import subprocess
-from collections import defaultdict
 import distutils.util
 
 import django
-from Bio import SeqIO
 from django.utils.functional import classproperty
 import numpy
 import regex
@@ -72,7 +70,7 @@ class Cas9(Nuclease, abc.ABC):
             for spacer in spacer_sequences:
                 f.write(f'{spacer}{"N"*len(cls.pam_motif)}\n')
 
-        # Run bowtie on the spacer sequences and parse output for extracting spacer and PAM from 2bit file
+        # Run bowtie on the spacer sequences and parse output for spacer and PAM sequence
         cmd = f"{django.conf.settings.DESIGN_BOWTIE_PATH} -n 3 -l {cls.spacer_length} -e {(3 + len(cls.pam_motif))*30} -a --best --sam-nohead -x {django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{assembly}/{assembly} --suppress 5,6,7 -r {spacers_file} -y --threads {django.conf.settings.DESIGN_BOWTIE_THREADS}"
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
         for i, line in enumerate(iter(p.stdout.readline, '')):
