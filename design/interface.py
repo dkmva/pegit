@@ -6,15 +6,14 @@ import itertools
 import enum
 import json
 import os
+import string
 import typing
 import uuid
 
 from Bio import Entrez
 import celery
-from celery.exceptions import SoftTimeLimitExceeded
 import django
 from djangorestframework_camel_case.util import camelize, underscoreize
-import regex as re
 from rest_framework import serializers
 import pandas as pd
 
@@ -227,7 +226,9 @@ class Job:
 
         cloning_strategy = NUCLEASES[self.nuclease].cloning_strategies[self.cloning_strategy]
 
-        writer = pd.ExcelWriter(os.path.join(self.jobdir, f'{self.job_name}.xlsx'), engine='xlsxwriter',
+        excel_name = ''.join([c if c in f"-_.() {string.ascii_letters}{string.digits}" else "_" for c in self.job_name])
+
+        writer = pd.ExcelWriter(os.path.join(self.jobdir, f'{excel_name}.xlsx'), engine='xlsxwriter',
                                 options=dict(constant_memory=True, tmpdir=os.path.join(self.jobdir, 'excel_tmp')))
         wb = writer.book
         heading = wb.add_format({'bold': True, 'font_size': 15})
