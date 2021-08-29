@@ -58,6 +58,9 @@ class AminoAcidAlteration(AbstractEdit):
         parsed_alterations = []
         codon_table = DEFAULT_CODON_TABLE
 
+        if len(sequence_object.translation) < 1:
+            raise ValueError("Sequence object does not have a coding sequence")
+
         for alteration in alterations:
             """"""
             if alteration:
@@ -227,6 +230,9 @@ class TagProtein(AminoAcidAlteration):
     def validate_options(cls, options, sequence_object):
         super(AminoAcidAlteration, cls).validate_options(options, sequence_object)
         tag = options['tag']
+
+        if len(sequence_object.translation) < 1:
+            raise ValueError("Sequence object does not have a coding sequence")
 
         position = options['position']
         try:
