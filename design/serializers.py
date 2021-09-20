@@ -246,6 +246,7 @@ class NucleaseSerializer(serializers.Serializer):
     cut_site_position = serializers.IntegerField(source='_cut_site_position')
     scaffolds = serializers.DictField(child=serializers.CharField())
     cloning_strategies = serializers.SerializerMethodField()
+    can_score_spacers = serializers.BooleanField()
     docstring = serializers.SerializerMethodField()
     options = serializers.SerializerMethodField()
 

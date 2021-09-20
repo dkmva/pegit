@@ -148,6 +148,7 @@ class SpCas9(SpCas9Base):
 
     upstream_length = 4
     downstream_length = 3
+    can_score_spacers = True
 
     @classmethod
     def _filter_offtarget(cls, seq):

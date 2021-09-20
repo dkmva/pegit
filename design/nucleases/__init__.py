@@ -87,6 +87,10 @@ class Nuclease(abc.ABC):
     def downstream_from_cut_site(cls):
         return (cls.spacer_length + len(cls.pam_motif) + cls.downstream_length) - cls._cut_site_position
 
+    @classproperty
+    def can_score_spacers(cls):
+        return False
+
     @classmethod
     def scaffold_name_to_sequence(cls, scaffold_name: typing.Optional[str] = None) -> str:
         """Get scaffold from name"""
