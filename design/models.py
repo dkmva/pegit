@@ -151,7 +151,7 @@ class Organism(models.Model):
                 for record in parse_gff_file(file_path, disable=silent):
                     attributes = record['attributes']
 
-                    if record['type'] in ['miRNA', 'snoRNA']:
+                    if record['type'] in ['miRNA', 'snoRNA', 'ncRNA']:
                         miRNA_to_exon[attributes['ID']] = attributes['Parent']
 
                     if record['type'] in ['gene', 'pseudogene']:
