@@ -101,8 +101,9 @@ def _make_2bit_and_scaffold_list(fasta, name) -> str:
 
     print('Running faToTwoBit')
     subprocess.run(
-        f'{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH.replace("twoBitToFa", "faToTwoBit")} "{fasta}" "{django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{name}.2bit"',
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
+        f'{os.path.join(os.path.dirname(django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH), "faToTwoBit")} "{fasta}" "{django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{name}.2bit"',
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii', check=True)
+    
 
     print('Getting record ids')
     scaffolds = [record.id for record in SeqIO.parse(fasta, 'fasta')]
@@ -132,7 +133,7 @@ def _make_bowtie(fasta, name) -> None:
         pass
     subprocess.run(
         f'{django.conf.settings.DESIGN_BOWTIE_PATH}-build "{fasta}" "{django.conf.settings.DESIGN_BOWTIE_GENOMES_FOLDER}/{name}/{name}"',
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii', check=True)
 
     print('done')
 
@@ -165,7 +166,8 @@ def add_organism_folder(namespace) -> None:
     with open(scaffolds) as f:
         scaffolds = f.read()
 
-    Organism.add_to_database(**conf, file_path=gff, scaffolds='scaffolds')
+    Organism.add_to_database(**conf, file_path=gff, scaffolds=scaffolds)
+
 
 
 def main():

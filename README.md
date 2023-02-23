@@ -39,7 +39,7 @@ Before running pegIT for the first time, the database must be instantiated. This
 
 Use [faToTwoBit](http://hgdownload.soe.ucsc.edu/admin/exe/ "faToTwoBit") and [bowtie](http://bowtie-bio.sourceforge.net/manual.shtml#the-bowtie-build-indexer) to convert a FASTA file to .2bit and generate bowtie index.
 
-Move the 2bit file to the 2bit folder `DESIGN_TWO_BIT_TO_FA_PATH`. Move the bowtie indices to the `DESIGN_BOWTIE_GENOMES_FOLDER` should be in a subfolder with same name as the index, eg. `<DESIGN_BOWTIE_GENOMES_FOLDER>homo sapiens/homo sapiens*ebwt`
+Move the 2bit file to the 2bit folder `DESIGN_ASSEMBLIES_FOLDER`. Move the bowtie indices to the `DESIGN_BOWTIE_GENOMES_FOLDER` should be in a subfolder with same name as the index, eg. `<DESIGN_BOWTIE_GENOMES_FOLDER>homo sapiens/homo sapiens*ebwt`
 
 #### Running pegIT:
 

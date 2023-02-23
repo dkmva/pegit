@@ -177,13 +177,13 @@ def extract_sequence(assembly, chromosome, strand, start=None, end=None):
     else:
         end = ''
     result = subprocess.run(f'{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH} -seq={chromosome}{start}{end} {django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{assembly}.2bit stdout',
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii', check=True)
 
     m = regex.search(r'>= seqSize \((\d+)\)', result.stderr)
     if m:
         result = subprocess.run(
             f'{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH} -seq={chromosome}{start} -end={m.groups()[0]} {django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{assembly}.2bit stdout',
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii', check=True)
     output = result.stdout.split('\n')
     header, sequence = output[0], ''.join(output[1:])
     if strand == '-' and sequence:
@@ -194,7 +194,7 @@ def extract_sequence(assembly, chromosome, strand, start=None, end=None):
 def extract_sequences(seqlist, assembly, outfile):
     """Get multiple DNA sequences from a 2bit file"""
     result = subprocess.run(f"{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH} -seqList={seqlist} {django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{assembly}.2bit {outfile}",
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii', check=True)
     m = regex.search(r'twoBitReadSeqFrag in \S+ end \((\d+)\) >= seqSize', result.stderr)
 
     while m:
@@ -205,7 +205,7 @@ def extract_sequences(seqlist, assembly, outfile):
         os.rename(f'{seqlist}-2', seqlist)
         result = subprocess.run(
             f"{django.conf.settings.DESIGN_TWO_BIT_TO_FA_PATH} -seqList={seqlist} {django.conf.settings.DESIGN_ASSEMBLIES_FOLDER}/{assembly}.2bit {outfile}",
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii')
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, encoding='ascii', check=True)
         m = regex.search(r'twoBitReadSeqFrag in \S+ end \((\d+)\) >= seqSize', result.stderr)
 
     return outfile
