@@ -29,6 +29,7 @@ from pandas.io.formats.excel import ExcelFormatter, ExcelCell
 
 
 DESIGN_EDIT_GROUP_SIZE = 5
+EXCEL_SANITIZE = str.maketrans('[]:*?/\\', '_______')
 
 
 def write_excel_by_rows(self, coloffset: int):
@@ -277,6 +278,7 @@ class Job:
         # EDITS
         for i, result in enumerate(self.results, 1):
             wsname = f"{i} {self.edits[i-1]['sequence'].split(',')[0]} {self.edits[i-1]['edit']}"[:31]
+            wsname = wsname.translate(EXCEL_SANITIZE)
             pegRNAs = copy.deepcopy(result['pegRNAs'])
             if not pegRNAs:
                 summary_pegrnas.append({"#Edit": i})
