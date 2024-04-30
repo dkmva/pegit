@@ -226,7 +226,7 @@ class ClinvarSearch(viewsets.ViewSet):
             with Entrez.esearch(db="clinvar", retmax=30, term=query, retmode='xml') as handle:
                 ids = Entrez.read(handle)['IdList']
             with Entrez.esummary(db="clinvar", id=','.join(ids), retmode='xml') as handle:
-                records = Entrez.read(handle)['DocumentSummarySet']['DocumentSummary']
+                records = Entrez.read(handle, validate=False)['DocumentSummarySet']['DocumentSummary']
             return Response({'results': records})
         return Response({'results': []})
 

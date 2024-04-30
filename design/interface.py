@@ -192,7 +192,7 @@ class Job:
         repair = [e['repair'] for e in clinvar_list]
 
         handle = Entrez.esummary(db="clinvar", id=','.join(ids), retmode='xml')
-        records = Entrez.read(handle)
+        records = Entrez.read(handle, validate=False)
         edits = []
         for i, record in enumerate(records['DocumentSummarySet']['DocumentSummary']):
             variation_set = record['variation_set'][0]
