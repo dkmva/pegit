@@ -220,7 +220,7 @@ class EditSerializer(serializers.Serializer):
         edits = []
         errors = []
         handle = Entrez.esummary(db="clinvar", id=','.join(ids), retmode='xml')
-        records = Entrez.read(handle)
+        records = Entrez.read(handle, validate=False)
         for i, record in enumerate(records['DocumentSummarySet']['DocumentSummary']):
             edit = {'clinvar_id': f'VCV{ids[i]}', 'repair': repair[i]}
             variation_set = record['variation_set'][0]
