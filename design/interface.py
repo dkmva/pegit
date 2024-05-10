@@ -705,6 +705,8 @@ def create_oligos_chain(job_id: str):
 
     indices = list(range(len(job.edits)))
     n = DESIGN_EDIT_GROUP_SIZE
+    if len(job.edits) / n > 100:
+        n = -(-len(job.edits) // 100)
     indices = [indices[i * n:(i + 1) * n] for i in range((len(indices) + n - 1) // n )]
 
     results = init_job.si(job_id)
