@@ -313,14 +313,14 @@ class Job:
                     except IndexError:
                         for k in cloning_strategy.excel_nicking_headers:
                             pegRNAs[j][k] = ''
-                    for n in nicking:
+                    for ni, n in enumerate(nicking):
                         n['#pegRNA'] = j + 1
                         try:
                             n['offtargets'] = ','.join(str(e) for e in n['offtargets'][0])
                         except KeyError:
                             n['offtargets'] = 'unknown'
-                        for k, v in zip(cloning_strategy.excel_nicking_headers, list(nicking[0].keys())):
-                            n[k] = nicking[0][v]
+                        for k, v in zip(cloning_strategy.excel_nicking_headers, list(nicking[ni].keys())):
+                            n[k] = nicking[ni][v]
 
                         n = {k: n[k] for k in ['#pegRNA', 'kind', 'position', 'spacer', 'score', 'wt_score', 'offtargets'] \
                                                  + cloning_strategy.excel_nicking_headers}
