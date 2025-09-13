@@ -70,10 +70,26 @@ class GeneViewSet(MultiSerializerViewSet):
 
         return queryset
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        # Limit to max 10 genes
+        queryset = queryset[:10]
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
 
 class TranscriptViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Transcript.objects.select_related('gene').prefetch_related('exons', 'coding_sequences').all()
     serializer_class = TranscriptSerializer
+
+    def list(self, request, *args, **kwargs):
+        # Disable list
+        return Response([])
 
 
 class EditViewSet(viewsets.ViewSet):
